@@ -1,10 +1,20 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { listProducts, getProductByBarcode } from '../../api/products';
 import { listCustomers } from '../../api/customers';
 import { createSale } from '../../api/sales';
+import {
+  generateClientRef,
+  queueSale,
+  countQueuedSales,
+  flushQueue,
+} from '../../utils/offlineQueue';
 import './POS.css';
+
+// The scanner pulls in a camera/decoding library; keep it out of the POS
+// entry chunk so the checkout screen stays fast to load on mobile data.
+const BarcodeScanner = lazy(() => import('../../components/BarcodeScanner'));
 
 const PAYMENT_METHODS = ['cash', 'card', 'credit', 'jazzcash', 'easypaisa'];
 
@@ -17,6 +27,10 @@ export default function POS() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [discount, setDiscount] = useState('0');
   const [checkingOut, setCheckingOut] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [syncing, setSyncing] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -35,6 +49,60 @@ export default function POS() {
   useEffect(() => {
     listCustomers().then((res) => setCustomers(res.data)).catch(() => {});
   }, []);
+
+  const syncPendingSales = useCallback(async () => {
+    const queued = await countQueuedSales().catch(() => 0);
+    if (queued === 0) {
+      setPendingCount(0);
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const { synced, failed, conflicts } = await flushQueue(createSale);
+
+      if (synced > 0) {
+        toast.success(`${synced} offline ${synced === 1 ? 'sale' : 'sales'} synced`);
+        fetchProducts();
+      }
+      conflicts.forEach((c) => {
+        // Long duration: this needs the shopkeeper's attention, not a glance
+        toast.error(`Offline sale (Rs ${c.total ?? '—'}) could not be saved: ${c.reason}`, { duration: 10000 });
+      });
+
+      setPendingCount(failed);
+    } catch {
+      // Leave the queue intact; the next reconnect or interval will retry
+    } finally {
+      setSyncing(false);
+    }
+  }, [fetchProducts]);
+
+  // Sync on mount, whenever the browser reports a reconnect, and on a slow
+  // interval as a safety net (navigator.onLine can be wrong on captive wifi).
+  useEffect(() => {
+    countQueuedSales().then(setPendingCount).catch(() => {});
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      syncPendingSales();
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    if (navigator.onLine) syncPendingSales();
+
+    const interval = setInterval(() => {
+      if (navigator.onLine) syncPendingSales();
+    }, 60000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, [syncPendingSales]);
 
   const addToCart = (product) => {
     setCart((prev) => {
@@ -76,6 +144,17 @@ export default function POS() {
     }
   };
 
+  const handleScanned = useCallback(async (barcode) => {
+    setScannerOpen(false);
+    try {
+      const res = await getProductByBarcode(barcode);
+      addToCart(res.data);
+      toast.success(`Added ${res.data.name}`);
+    } catch {
+      toast.error(`No product found for barcode ${barcode}`);
+    }
+  }, []);
+
   const updateQuantity = (productId, delta) => {
     setCart((prev) =>
       prev
@@ -108,21 +187,49 @@ export default function POS() {
       return;
     }
     setCheckingOut(true);
-    try {
-      await createSale({
-        items: cart.map((item) => ({ productId: item.productId, quantity: item.quantity })),
-        customerId: customerId || undefined,
-        discount: discountValue,
-        paymentMethod,
-        amountPaid: total,
-      });
-      toast.success('Sale completed');
+
+    const clientRef = generateClientRef();
+    const payload = {
+      items: cart.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+      customerId: customerId || undefined,
+      discount: discountValue,
+      paymentMethod,
+      amountPaid: total,
+    };
+
+    const clearCart = () => {
       setCart([]);
       setDiscount('0');
       setCustomerId('');
+    };
+
+    try {
+      await createSale({ ...payload, clientRef });
+      toast.success('Sale completed');
+      clearCart();
       fetchProducts();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Checkout failed');
+      // No response at all means the request never reached the server (offline
+      // or dead connection) - safe to queue. A 4xx/5xx means the server did
+      // respond and rejected it, so queuing would just replay a bad sale.
+      const isNetworkFailure = !err.response;
+
+      if (isNetworkFailure) {
+        try {
+          await queueSale({
+            clientRef,
+            queuedAt: new Date().toISOString(),
+            payload: { ...payload, displayTotal: total },
+          });
+          setPendingCount((c) => c + 1);
+          toast.success(`Saved offline — will sync when back online (Rs ${total})`, { icon: '📥' });
+          clearCart();
+        } catch {
+          toast.error('Offline and could not save the sale locally. Please write it down.');
+        }
+      } else {
+        toast.error(err.response?.data?.message || 'Checkout failed');
+      }
     } finally {
       setCheckingOut(false);
     }
@@ -131,15 +238,20 @@ export default function POS() {
   return (
     <div className="pos-shell">
       <div className="pos-catalog">
-        <input
-          className="search-input"
-          style={{ maxWidth: '100%' }}
-          placeholder="Search or scan barcode..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={handleBarcodeEnter}
-          autoFocus
-        />
+        <div className="pos-search-row">
+          <input
+            className="search-input"
+            style={{ maxWidth: '100%', marginBottom: 0 }}
+            placeholder="Search or scan barcode..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={handleBarcodeEnter}
+            autoFocus
+          />
+          <button className="pos-scan-btn" onClick={() => setScannerOpen(true)} title="Scan with camera">
+            Scan
+          </button>
+        </div>
         <div className="pos-product-grid">
           {products.map((p) => (
             <button
@@ -160,6 +272,24 @@ export default function POS() {
 
       <div className="pos-cart">
         <h2 className="pos-cart-title">Cart</h2>
+
+        {(!isOnline || pendingCount > 0) && (
+          <div className={isOnline ? 'pos-status pos-status-pending' : 'pos-status pos-status-offline'}>
+            {!isOnline && <strong>Offline mode.</strong>} {!isOnline && 'Sales are saved on this device.'}
+            {pendingCount > 0 && (
+              <span>
+                {' '}
+                {pendingCount} {pendingCount === 1 ? 'sale' : 'sales'} waiting to sync
+                {syncing ? ' (syncing...)' : ''}.
+              </span>
+            )}
+            {isOnline && pendingCount > 0 && !syncing && (
+              <button className="btn-link" onClick={syncPendingSales} style={{ marginLeft: 6 }}>
+                Retry now
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="pos-cart-items">
           {cart.length === 0 && <p className="empty-hint">No items yet. Tap a product to add it.</p>}
@@ -232,6 +362,12 @@ export default function POS() {
           </button>
         </div>
       </div>
+
+      {scannerOpen && (
+        <Suspense fallback={null}>
+          <BarcodeScanner onDetected={handleScanned} onClose={() => setScannerOpen(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

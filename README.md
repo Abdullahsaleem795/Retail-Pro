@@ -18,10 +18,12 @@ without learning accounting software.
 | **Purchases** | Purchase orders per supplier, receive-to-stock flow, outstanding balance tracking |
 | **Suppliers / Customers** | Contact management, supplier balances, customer *khata* (credit) balances |
 | **Expenses** | Categorised shop expenses feeding into net-profit reports |
-| **Reports** | Profit & loss, sales trend, best sellers, dead stock |
+| **Reports** | Profit & loss, sales trend, best sellers, fast movers, reorder suggestions, low-margin warnings, dead stock |
 | **WhatsApp** | Low-stock alerts, daily sales report, weekly profit report, supplier order drafts |
 | **Settings** | Shop profile, staff accounts with roles, WhatsApp config, language |
 | **Language** | Full English / اردو interface with right-to-left layout |
+| **Offline POS** | Sales ring up during an internet outage and sync automatically on reconnect |
+| **Barcode** | Hardware wedge scanners, plus camera scanning for phone-based counters |
 | **PWA** | Installable on Android, works offline for catalog browsing |
 
 ---
@@ -158,6 +160,49 @@ await session.withTransaction(async () => {
 
 ---
 
+## Offline Selling
+
+Shops here lose connectivity regularly, and a POS that refuses to ring up a sale during an outage is
+worse than the paper register it replaces. So the POS keeps working offline:
+
+1. If a checkout request never reaches the server (no HTTP response at all), the sale is written to
+   **IndexedDB** and the cart clears as normal. A server response that *rejects* the sale is not
+   queued — replaying a bad sale would be wrong.
+2. A banner shows how many sales are waiting, and sync runs on reconnect, on a 60-second safety
+   interval, and via a manual "Retry now" button.
+3. Sales that fail on sync for a business reason — stock ran out while offline — are removed from the
+   queue and surfaced to the shopkeeper to reconcile, rather than retrying forever.
+
+### Idempotency
+
+Every queued sale carries a client-generated `clientRef` (UUID). If a retry crosses with a slow
+server response, the server returns the original receipt instead of creating a second one, so stock
+is never decremented twice.
+
+The uniqueness index for this deserves a note, because the obvious version is wrong:
+
+```js
+// WRONG - in a COMPOUND index, `sparse` only skips a document when EVERY indexed
+// field is missing. shopId is always present, so ordinary online sales get
+// indexed with clientRef: null and the second one collides.
+saleSchema.index({ shopId: 1, clientRef: 1 }, { unique: true, sparse: true });
+
+// CORRECT - only index documents that actually carry a clientRef.
+saleSchema.index(
+  { shopId: 1, clientRef: 1 },
+  { unique: true, partialFilterExpression: { clientRef: { $type: 'string' } } }
+);
+```
+
+If you ran an earlier build that created the sparse version, drop it before the corrected index can
+be built:
+
+```bash
+mongosh "<your-uri>" --eval "db.sales.dropIndex('shopId_1_clientRef_1')"
+```
+
+---
+
 ## Security
 
 - **Passwords** — bcrypt, 10 salt rounds, `select: false` so hashes never leave the database layer
@@ -199,7 +244,7 @@ GET    /api/categories         POST / PUT / DELETE
 ### Sales & Purchases
 ```
 GET    /api/sales              ?from= &to= &customerId=
-POST   /api/sales              Checkout (transactional)
+POST   /api/sales              Checkout (transactional, idempotent via clientRef)
 GET    /api/sales/:id
 GET    /api/sales/:id/receipt  PDF receipt
 PATCH  /api/sales/:id/refund   (owner, manager)
@@ -224,6 +269,9 @@ GET /api/reports/sales-trend    ?days=14
 GET /api/reports/profit         ?from= &to=
 GET /api/reports/best-sellers   ?limit= &days=
 GET /api/reports/dead-stock     ?days=60
+GET /api/reports/fast-moving    ?days=30   Units/day + days of stock cover
+GET /api/reports/low-margin     ?threshold=15
+GET /api/reports/reorder        ?days=30&coverDays=14
 ```
 
 ### Notifications & Shop

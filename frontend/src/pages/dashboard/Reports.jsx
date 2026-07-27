@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { getProfitReport, getBestSellers, getDeadStock } from '../../api/reports';
+import {
+  getProfitReport,
+  getBestSellers,
+  getDeadStock,
+  getFastMoving,
+  getLowMargin,
+  getReorderSuggestions,
+} from '../../api/reports';
 import { formatCurrency, formatDate } from '../../utils/format';
 import './Inventory.css';
 import './DashboardHome.css';
@@ -9,28 +16,38 @@ import './DashboardHome.css';
 const TABS = [
   { key: 'profit', label: 'Profit & Loss' },
   { key: 'best', label: 'Best Sellers' },
+  { key: 'fast', label: 'Fast Moving' },
+  { key: 'reorder', label: 'Reorder Suggestions' },
+  { key: 'margin', label: 'Low Margin' },
   { key: 'dead', label: 'Dead Stock' },
 ];
 
 export default function Reports() {
   const [tab, setTab] = useState('profit');
-  const [profit, setProfit] = useState(null);
-  const [bestSellers, setBestSellers] = useState([]);
-  const [deadStock, setDeadStock] = useState([]);
+  const [data, setData] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [profitRes, bestRes, deadRes] = await Promise.all([
+        const [profit, best, dead, fast, margin, reorder] = await Promise.all([
           getProfitReport({}),
           getBestSellers({ limit: 20, days: 30 }),
           getDeadStock({ days: 60 }),
+          getFastMoving({ days: 30 }),
+          getLowMargin({ threshold: 15 }),
+          getReorderSuggestions({ days: 30, coverDays: 14 }),
         ]);
-        setProfit(profitRes.data);
-        setBestSellers(bestRes.data);
-        setDeadStock(deadRes.data);
+        setData({
+          profit: profit.data,
+          best: best.data,
+          dead: dead.data,
+          fast: fast.data,
+          margin: margin.data,
+          reorder: reorder.data,
+          reorderTotal: reorder.totalEstimatedCost,
+        });
       } catch {
         toast.error('Failed to load reports');
       } finally {
@@ -59,32 +76,32 @@ export default function Reports() {
       </div>
 
       <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-        {tab === 'profit' && profit && (
+        {tab === 'profit' && data.profit && (
           <>
             <p className="report-period">
-              {formatDate(profit.from)} — {formatDate(profit.to)} (last 30 days)
+              {formatDate(data.profit.from)} — {formatDate(data.profit.to)} (last 30 days)
             </p>
             <div className="stat-grid">
               <div className="stat-card" style={{ borderTopColor: '#3b82f6' }}>
                 <span className="stat-label">Revenue</span>
-                <span className="stat-value">{formatCurrency(profit.revenue)}</span>
+                <span className="stat-value">{formatCurrency(data.profit.revenue)}</span>
               </div>
               <div className="stat-card" style={{ borderTopColor: '#f59e0b' }}>
                 <span className="stat-label">Cost of Goods Sold</span>
-                <span className="stat-value">{formatCurrency(profit.cogs)}</span>
+                <span className="stat-value">{formatCurrency(data.profit.cogs)}</span>
               </div>
               <div className="stat-card" style={{ borderTopColor: '#8b5cf6' }}>
                 <span className="stat-label">Gross Profit</span>
-                <span className="stat-value">{formatCurrency(profit.grossProfit)}</span>
+                <span className="stat-value">{formatCurrency(data.profit.grossProfit)}</span>
               </div>
               <div className="stat-card" style={{ borderTopColor: '#ef4444' }}>
                 <span className="stat-label">Expenses</span>
-                <span className="stat-value">{formatCurrency(profit.expenses)}</span>
+                <span className="stat-value">{formatCurrency(data.profit.expenses)}</span>
               </div>
-              <div className="stat-card" style={{ borderTopColor: profit.netProfit >= 0 ? '#22c55e' : '#ef4444' }}>
+              <div className="stat-card" style={{ borderTopColor: data.profit.netProfit >= 0 ? '#22c55e' : '#ef4444' }}>
                 <span className="stat-label">Net Profit</span>
-                <span className="stat-value" style={{ color: profit.netProfit >= 0 ? '#16a34a' : '#dc2626' }}>
-                  {formatCurrency(profit.netProfit)}
+                <span className="stat-value" style={{ color: data.profit.netProfit >= 0 ? '#16a34a' : '#dc2626' }}>
+                  {formatCurrency(data.profit.netProfit)}
                 </span>
               </div>
             </div>
@@ -98,10 +115,10 @@ export default function Reports() {
                 <tr><th>#</th><th>Product</th><th>Units Sold</th><th>Revenue</th></tr>
               </thead>
               <tbody>
-                {bestSellers.length === 0 ? (
+                {data.best?.length === 0 ? (
                   <tr><td colSpan={4} className="table-empty">Not enough sales data yet.</td></tr>
                 ) : (
-                  bestSellers.map((b, i) => (
+                  data.best?.map((b, i) => (
                     <tr key={b._id}>
                       <td>{i + 1}</td>
                       <td>{b.name}</td>
@@ -115,6 +132,110 @@ export default function Reports() {
           </div>
         )}
 
+        {tab === 'fast' && (
+          <>
+            <p className="report-period">
+              Your quickest-selling items. &quot;Days of cover&quot; is how long current stock lasts at the recent
+              selling rate — anything under 7 days needs restocking before your next market trip.
+            </p>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Product</th><th>Sold (30d)</th><th>Per Day</th><th>In Stock</th><th>Days of Cover</th></tr>
+                </thead>
+                <tbody>
+                  {data.fast?.length === 0 ? (
+                    <tr><td colSpan={5} className="table-empty">Not enough sales data yet.</td></tr>
+                  ) : (
+                    data.fast?.map((f) => (
+                      <tr key={f._id}>
+                        <td>{f.name}</td>
+                        <td>{f.totalSold}</td>
+                        <td>{f.dailyRate}</td>
+                        <td>{f.stockQuantity} {f.unit}</td>
+                        <td>
+                          <span className={f.needsRestock ? 'badge badge-warning' : 'badge badge-ok'}>
+                            {f.daysOfCover === null ? '—' : `${f.daysOfCover} days`}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {tab === 'reorder' && (
+          <>
+            <p className="report-period">
+              Based on the last 30 days of sales, here is what to buy to cover the next 14 days.
+              {data.reorderTotal > 0 && (
+                <> Estimated total cost: <strong>{formatCurrency(data.reorderTotal)}</strong>.</>
+              )}
+            </p>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Product</th><th>In Stock</th><th>Per Day</th><th>Order Qty</th><th>Est. Cost</th><th>Supplier</th></tr>
+                </thead>
+                <tbody>
+                  {data.reorder?.length === 0 ? (
+                    <tr><td colSpan={6} className="table-empty">Stock levels look healthy. Nothing to reorder.</td></tr>
+                  ) : (
+                    data.reorder?.map((r) => (
+                      <tr key={r._id}>
+                        <td>{r.name}</td>
+                        <td>{r.stockQuantity} {r.unit}</td>
+                        <td>{r.dailyRate}</td>
+                        <td><strong>{r.suggestedOrderQty} {r.unit}</strong></td>
+                        <td>{formatCurrency(r.estimatedCost)}</td>
+                        <td>{r.supplier?.name || '—'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {tab === 'margin' && (
+          <>
+            <p className="report-period">
+              Products earning under 15% margin. After rent, electricity and transport, these may be costing you
+              money to sell.
+            </p>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr><th>Product</th><th>Cost</th><th>Selling</th><th>Profit/Unit</th><th>Margin</th></tr>
+                </thead>
+                <tbody>
+                  {data.margin?.length === 0 ? (
+                    <tr><td colSpan={5} className="table-empty">All products are above 15% margin.</td></tr>
+                  ) : (
+                    data.margin?.map((m) => (
+                      <tr key={m._id}>
+                        <td>{m.name}</td>
+                        <td>{formatCurrency(m.costPrice)}</td>
+                        <td>{formatCurrency(m.sellingPrice)}</td>
+                        <td style={{ color: m.isLoss ? '#dc2626' : undefined }}>{formatCurrency(m.profitPerUnit)}</td>
+                        <td>
+                          <span className={m.isLoss ? 'badge badge-danger' : 'badge badge-warning'}>
+                            {m.marginPercent}%{m.isLoss ? ' (loss)' : ''}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
         {tab === 'dead' && (
           <>
             <p className="report-period">
@@ -126,10 +247,10 @@ export default function Reports() {
                   <tr><th>Product</th><th>SKU</th><th>Stock</th><th>Tied-up Capital</th></tr>
                 </thead>
                 <tbody>
-                  {deadStock.length === 0 ? (
+                  {data.dead?.length === 0 ? (
                     <tr><td colSpan={4} className="table-empty">No dead stock. Every product is moving.</td></tr>
                   ) : (
-                    deadStock.map((p) => (
+                    data.dead?.map((p) => (
                       <tr key={p._id}>
                         <td>{p.name}</td>
                         <td>{p.sku}</td>

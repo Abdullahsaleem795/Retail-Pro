@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import LanguageSwitch from '../components/LanguageSwitch';
+import NotificationBell from '../components/NotificationBell';
 import './DashboardLayout.css';
 
 const NAV_ITEMS = [
@@ -38,6 +39,7 @@ export default function DashboardLayout() {
         <header className="dash-topbar">
           <span className="dash-shop-name">{shop?.name || 'My Shop'}</span>
           <div className="dash-user">
+            <NotificationBell />
             <LanguageSwitch />
             <span>{user?.name} ({user?.role})</span>
             <button onClick={logout} className="btn-logout">{t('common.logout')}</button>

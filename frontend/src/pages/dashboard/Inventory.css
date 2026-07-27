@@ -79,6 +79,11 @@
   color: #b45309;
 }
 
+.badge-danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .table-actions {
   display: flex;
   gap: 0.75rem;

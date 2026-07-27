@@ -1,0 +1,39 @@
+.scanner-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+}
+
+.scanner-view {
+  width: 100%;
+  min-height: 220px;
+  background: #0f172a;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.scanner-view video {
+  width: 100% !important;
+  border-radius: 8px;
+}
+
+.scanner-hint {
+  margin: 0.85rem 0 0;
+  font-size: 0.82rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.scanner-error {
+  margin: 0.85rem 0 0;
+  font-size: 0.82rem;
+  color: #b91c1c;
+  background: #fef2f2;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  text-align: center;
+}

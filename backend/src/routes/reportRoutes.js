@@ -6,6 +6,9 @@ const {
   getProfitReport,
   getBestSellers,
   getDeadStock,
+  getFastMoving,
+  getLowMargin,
+  getReorderSuggestions,
 } = require('../controllers/reportController');
 
 const router = express.Router();
@@ -16,5 +19,8 @@ router.get('/sales-trend', getSalesTrend);
 router.get('/profit', getProfitReport);
 router.get('/best-sellers', getBestSellers);
 router.get('/dead-stock', getDeadStock);
+router.get('/fast-moving', getFastMoving);
+router.get('/low-margin', getLowMargin);
+router.get('/reorder', getReorderSuggestions);
 
 module.exports = router;

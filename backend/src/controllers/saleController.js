@@ -41,11 +41,29 @@ const getSale = asyncHandler(async (req, res) => {
 // history), and updates customer credit balance for 'credit' (khata) sales.
 // Wrapped in a transaction so a stock-out mid-checkout leaves nothing half-applied.
 const createSale = asyncHandler(async (req, res) => {
-  const { items, customerId, discount = 0, tax = 0, paymentMethod = 'cash', amountPaid } = req.body;
+  const {
+    items,
+    customerId,
+    discount = 0,
+    tax = 0,
+    paymentMethod = 'cash',
+    amountPaid,
+    clientRef,
+    syncedFromOffline = false,
+  } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     res.status(400);
     throw new Error('Sale must contain at least one item');
+  }
+
+  // Idempotency: a retried offline sale must not be recorded twice. Return the
+  // original receipt so the client can clear it from its queue as a success.
+  if (clientRef) {
+    const existing = await Sale.findOne({ shopId: req.shopId, clientRef });
+    if (existing) {
+      return res.status(200).json({ success: true, data: existing, duplicate: true });
+    }
   }
 
   const session = await mongoose.startSession();
@@ -120,6 +138,8 @@ const createSale = asyncHandler(async (req, res) => {
             amountPaid: paid,
             cashierId: req.userId,
             receiptNumber: generateReceiptNumber(),
+            clientRef: clientRef || undefined,
+            syncedFromOffline: Boolean(syncedFromOffline),
           },
         ],
         { session }
@@ -127,7 +147,7 @@ const createSale = asyncHandler(async (req, res) => {
       createdSale = sale;
     });
 
-    res.status(201).json({ success: true, data: createdSale });
+    return res.status(201).json({ success: true, data: createdSale });
   } finally {
     session.endSession();
   }

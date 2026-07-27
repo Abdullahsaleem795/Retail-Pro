@@ -1,6 +1,5 @@
 const asyncHandler = require('express-async-handler');
 const jwt = require('jsonwebtoken');
-const { validationResult } = require('express-validator');
 const Shop = require('../models/Shop');
 const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
@@ -15,12 +14,6 @@ const tokenPayload = (user) => ({
 // Creates a new Shop plus its first user (owner). This is the only place a
 // shopId is ever generated - every subsequent request derives shopId from the JWT.
 const registerShopOwner = asyncHandler(async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    res.status(400);
-    throw new Error(errors.array().map((e) => e.msg).join(', '));
-  }
-
   const { shopName, businessType, ownerName, phone, email, password, city } = req.body;
 
   const shop = await Shop.create({

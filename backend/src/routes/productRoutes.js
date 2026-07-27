@@ -1,6 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
 const { protect, requireRole } = require('../middleware/auth');
+const validate = require('../middleware/validate');
 const {
   getProducts,
   getProductByBarcode,
@@ -25,7 +26,7 @@ const productValidation = [
 router
   .route('/')
   .get(getProducts)
-  .post(requireRole('owner', 'manager'), productValidation, createProduct);
+  .post(requireRole('owner', 'manager'), productValidation, validate, createProduct);
 
 router.get('/barcode/:barcode', getProductByBarcode);
 

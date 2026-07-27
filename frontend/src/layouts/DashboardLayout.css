@@ -47,6 +47,17 @@
   border-left-color: #22c55e;
 }
 
+/* Urdu renders right-to-left, so the sidebar's active indicator has to move to
+   the opposite edge or it ends up detached from the text. */
+[dir='rtl'] .dash-nav-link {
+  border-left: none;
+  border-right: 3px solid transparent;
+}
+
+[dir='rtl'] .dash-nav-link.active {
+  border-right-color: #22c55e;
+}
+
 .dash-main {
   flex: 1;
   display: flex;

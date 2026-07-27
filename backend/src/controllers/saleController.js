@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const Sale = require('../models/Sale');
 const Product = require('../models/Product');
 const Customer = require('../models/Customer');
+const Shop = require('../models/Shop');
+const { buildReceiptPDF } = require('../services/pdfService');
 
 const generateReceiptNumber = () => `RCPT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -175,4 +177,15 @@ const refundSale = asyncHandler(async (req, res) => {
   }
 });
 
-module.exports = { getSales, getSale, createSale, refundSale };
+// GET /api/sales/:id/receipt - streams a printable PDF receipt
+const getSaleReceipt = asyncHandler(async (req, res) => {
+  const sale = await Sale.findOne({ _id: req.params.id, shopId: req.shopId }).populate('customerId', 'name phone');
+  if (!sale) {
+    res.status(404);
+    throw new Error('Sale not found');
+  }
+  const shop = await Shop.findById(req.shopId).select('name address phone');
+  buildReceiptPDF(sale, shop, res);
+});
+
+module.exports = { getSales, getSale, createSale, refundSale, getSaleReceipt };

@@ -1,6 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
 const { protect, requireRole } = require('../middleware/auth');
+const validate = require('../middleware/validate');
 const {
   getSuppliers,
   getSupplier,
@@ -17,7 +18,7 @@ const supplierValidation = [
   body('phone').trim().notEmpty().withMessage('Phone number is required'),
 ];
 
-router.route('/').get(getSuppliers).post(requireRole('owner', 'manager'), supplierValidation, createSupplier);
+router.route('/').get(getSuppliers).post(requireRole('owner', 'manager'), supplierValidation, validate, createSupplier);
 router
   .route('/:id')
   .get(getSupplier)

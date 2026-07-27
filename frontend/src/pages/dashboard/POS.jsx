@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { listProducts, getProductByBarcode } from '../../api/products';
 import { listCustomers } from '../../api/customers';
 import { createSale } from '../../api/sales';
@@ -162,36 +162,35 @@ export default function POS() {
         <h2 className="pos-cart-title">Cart</h2>
 
         <div className="pos-cart-items">
-          <AnimatePresence>
-            {cart.length === 0 ? (
-              <p className="empty-hint">No items yet. Tap a product to add it.</p>
-            ) : (
-              cart.map((item) => (
-                <motion.div
-                  key={item.productId}
-                  className="pos-cart-item"
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -10 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  <div className="pos-cart-item-info">
-                    <span>{item.name}</span>
-                    <span className="pos-cart-item-price">Rs {item.unitPrice} each</span>
-                  </div>
-                  <div className="pos-qty-control">
-                    <button onClick={() => updateQuantity(item.productId, -1)}>-</button>
-                    <span>{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.productId, 1)}>+</button>
-                  </div>
-                  <span className="pos-cart-item-total">Rs {item.unitPrice * item.quantity}</span>
-                  <button className="pos-remove-btn" onClick={() => removeFromCart(item.productId)}>
-                    &times;
-                  </button>
-                </motion.div>
-              ))
-            )}
-          </AnimatePresence>
+          {cart.length === 0 && <p className="empty-hint">No items yet. Tap a product to add it.</p>}
+          {/* Deliberately no AnimatePresence/exit animation here. Exiting rows were
+              being orphaned in the DOM at their initial opacity:0 state, so every
+              completed sale left invisible rows occupying layout height in the cart.
+              Removal is instant instead, which is also the better feel at a POS
+              counter - the cashier gets immediate confirmation the sale went through. */}
+          {cart.map((item) => (
+            <motion.div
+              key={item.productId}
+              className="pos-cart-item"
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.15 }}
+            >
+              <div className="pos-cart-item-info">
+                <span>{item.name}</span>
+                <span className="pos-cart-item-price">Rs {item.unitPrice} each</span>
+              </div>
+              <div className="pos-qty-control">
+                <button onClick={() => updateQuantity(item.productId, -1)}>-</button>
+                <span>{item.quantity}</span>
+                <button onClick={() => updateQuantity(item.productId, 1)}>+</button>
+              </div>
+              <span className="pos-cart-item-total">Rs {item.unitPrice * item.quantity}</span>
+              <button className="pos-remove-btn" onClick={() => removeFromCart(item.productId)}>
+                &times;
+              </button>
+            </motion.div>
+          ))}
         </div>
 
         <div className="pos-cart-footer">

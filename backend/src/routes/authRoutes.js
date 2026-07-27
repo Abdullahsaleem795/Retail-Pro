@@ -1,6 +1,13 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { registerShopOwner, login, refresh, getMe } = require('../controllers/authController');
+const {
+  registerShopOwner,
+  login,
+  refresh,
+  getMe,
+  updateProfile,
+  changePassword,
+} = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 
@@ -31,5 +38,13 @@ router.post(
 
 router.post('/refresh', refresh);
 router.get('/me', protect, getMe);
+router.put('/profile', protect, updateProfile);
+router.put(
+  '/password',
+  protect,
+  [body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters')],
+  validate,
+  changePassword
+);
 
 module.exports = router;

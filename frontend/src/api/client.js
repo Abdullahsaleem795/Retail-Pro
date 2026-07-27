@@ -65,4 +65,8 @@ apiClient.interceptors.response.use(
   }
 );
 
+export const updateProfile = (payload) => apiClient.put('/auth/profile', payload).then((r) => r.data);
+export const changePassword = (currentPassword, newPassword) =>
+  apiClient.put('/auth/password', { currentPassword, newPassword }).then((r) => r.data);
+
 export default apiClient;

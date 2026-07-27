@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
+const { getEffectivePermissions, userHasPermission } = require('../config/permissions');
 
 // Verifies the access token and injects { userId, shopId, role } into req.
 // Every downstream controller must scope its queries by req.shopId - never trust
@@ -33,6 +34,7 @@ const protect = asyncHandler(async (req, res, next) => {
   req.shopId = user.shopId;
   req.role = user.role;
   req.user = user;
+  req.permissions = getEffectivePermissions(user);
 
   next();
 });
@@ -45,4 +47,14 @@ const requireRole = (...allowedRoles) => (req, res, next) => {
   next();
 };
 
-module.exports = { protect, requireRole };
+// Prefer this over requireRole for capability checks: it honours per-user
+// grants, so an owner can extend one cashier without changing their role.
+const requirePermission = (permission) => (req, res, next) => {
+  if (!userHasPermission(req.user, permission)) {
+    res.status(403);
+    throw new Error(`You do not have permission to perform this action (${permission})`);
+  }
+  next();
+};
+
+module.exports = { protect, requireRole, requirePermission };

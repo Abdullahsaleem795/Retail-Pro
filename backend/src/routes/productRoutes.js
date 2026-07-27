@@ -1,6 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { protect, requireRole } = require('../middleware/auth');
+const { protect, requirePermission } = require('../middleware/auth');
+const { PERMISSIONS } = require('../config/permissions');
 const validate = require('../middleware/validate');
 const {
   getProducts,
@@ -26,15 +27,15 @@ const productValidation = [
 router
   .route('/')
   .get(getProducts)
-  .post(requireRole('owner', 'manager'), productValidation, validate, createProduct);
+  .post(requirePermission(PERMISSIONS.PRODUCT_MANAGE), productValidation, validate, createProduct);
 
 router.get('/barcode/:barcode', getProductByBarcode);
 
 router
   .route('/:id')
   .get(getProduct)
-  .put(requireRole('owner', 'manager'), updateProduct)
-  .delete(requireRole('owner', 'manager'), deleteProduct);
+  .put(requirePermission(PERMISSIONS.PRODUCT_MANAGE), updateProduct)
+  .delete(requirePermission(PERMISSIONS.PRODUCT_MANAGE), deleteProduct);
 
 router.patch('/:id/stock', adjustStock);
 

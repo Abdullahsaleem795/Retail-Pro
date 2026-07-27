@@ -1,6 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { protect, requireRole } = require('../middleware/auth');
+const { protect, requirePermission } = require('../middleware/auth');
+const { PERMISSIONS } = require('../config/permissions');
 const validate = require('../middleware/validate');
 const {
   getPurchases,
@@ -18,9 +19,9 @@ const purchaseValidation = [
   body('items').isArray({ min: 1 }).withMessage('At least one item is required'),
 ];
 
-router.route('/').get(getPurchases).post(requireRole('owner', 'manager'), purchaseValidation, validate, createPurchase);
+router.route('/').get(getPurchases).post(requirePermission(PERMISSIONS.PURCHASE_MANAGE), purchaseValidation, validate, createPurchase);
 router.get('/:id', getPurchase);
-router.patch('/:id/receive', requireRole('owner', 'manager'), markReceived);
-router.patch('/:id/cancel', requireRole('owner', 'manager'), cancelPurchase);
+router.patch('/:id/receive', requirePermission(PERMISSIONS.PURCHASE_MANAGE), markReceived);
+router.patch('/:id/cancel', requirePermission(PERMISSIONS.PURCHASE_MANAGE), cancelPurchase);
 
 module.exports = router;

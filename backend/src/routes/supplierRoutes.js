@@ -1,6 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { protect, requireRole } = require('../middleware/auth');
+const { protect, requirePermission } = require('../middleware/auth');
+const { PERMISSIONS } = require('../config/permissions');
 const validate = require('../middleware/validate');
 const {
   getSuppliers,
@@ -18,11 +19,11 @@ const supplierValidation = [
   body('phone').trim().notEmpty().withMessage('Phone number is required'),
 ];
 
-router.route('/').get(getSuppliers).post(requireRole('owner', 'manager'), supplierValidation, validate, createSupplier);
+router.route('/').get(getSuppliers).post(requirePermission(PERMISSIONS.SUPPLIER_MANAGE), supplierValidation, validate, createSupplier);
 router
   .route('/:id')
   .get(getSupplier)
-  .put(requireRole('owner', 'manager'), updateSupplier)
-  .delete(requireRole('owner', 'manager'), deleteSupplier);
+  .put(requirePermission(PERMISSIONS.SUPPLIER_MANAGE), updateSupplier)
+  .delete(requirePermission(PERMISSIONS.SUPPLIER_MANAGE), deleteSupplier);
 
 module.exports = router;

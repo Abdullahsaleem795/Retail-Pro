@@ -1,6 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { protect, requireRole } = require('../middleware/auth');
+const { protect, requirePermission } = require('../middleware/auth');
+const { PERMISSIONS } = require('../config/permissions');
 const validate = require('../middleware/validate');
 const {
   getShop,
@@ -9,12 +10,17 @@ const {
   createUser,
   updateUser,
   deleteUser,
+  getGrantablePermissions,
 } = require('../controllers/shopController');
 
 const router = express.Router();
 router.use(protect);
 
-router.route('/').get(getShop).put(requireRole('owner'), updateShop);
+router.route('/').get(getShop).put(requirePermission(PERMISSIONS.SHOP_SETTINGS), updateShop);
+
+// Exposed so the staff UI can render the permission checkboxes from one source
+// of truth rather than duplicating the list on the client.
+router.get('/permissions', requirePermission(PERMISSIONS.STAFF_MANAGE), getGrantablePermissions);
 
 const newUserValidation = [
   body('name').trim().notEmpty().withMessage('Name is required'),
@@ -24,12 +30,12 @@ const newUserValidation = [
 
 router
   .route('/users')
-  .get(requireRole('owner', 'manager'), getUsers)
-  .post(requireRole('owner'), newUserValidation, validate, createUser);
+  .get(requirePermission(PERMISSIONS.STAFF_MANAGE), getUsers)
+  .post(requirePermission(PERMISSIONS.STAFF_MANAGE), newUserValidation, validate, createUser);
 
 router
   .route('/users/:id')
-  .put(requireRole('owner'), updateUser)
-  .delete(requireRole('owner'), deleteUser);
+  .put(requirePermission(PERMISSIONS.STAFF_MANAGE), updateUser)
+  .delete(requirePermission(PERMISSIONS.STAFF_MANAGE), deleteUser);
 
 module.exports = router;

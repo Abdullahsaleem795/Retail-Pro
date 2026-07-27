@@ -9,7 +9,10 @@
     "customers": "گاہک",
     "expenses": "اخراجات",
     "reports": "رپورٹس",
-    "settings": "سیٹنگز"
+    "settings": "سیٹنگز",
+    "categories": "اقسام",
+    "staff": "عملہ",
+    "profile": "پروفائل"
   },
   "common": {
     "add": "شامل کریں",

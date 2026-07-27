@@ -160,6 +160,40 @@ await session.withTransaction(async () => {
 
 ---
 
+## Testing
+
+```bash
+cd backend
+npm test
+```
+
+Integration tests run against a real in-memory MongoDB (`mongodb-memory-server`) rather than mocks,
+so transactions, indexes, and Mongoose middleware are all genuinely exercised.
+
+> The in-memory instance is started as a **replica set**, not a standalone. Checkout and
+> purchase-receiving use transactions, which MongoDB only supports on a replica set — a standalone
+> would fail every money-path test.
+>
+> The first run downloads a MongoDB binary (~400MB) and is slow. Subsequent runs are fast.
+
+Coverage focuses on the paths where a bug costs a shopkeeper real money:
+
+| Suite | What it protects |
+|---|---|
+| `tenancy.test.js` | One shop cannot read, edit, delete, or sell another shop's data; reports stay scoped |
+| `sales.test.js` | Stock decrements correctly, oversell rolls the whole transaction back, prices are snapshotted, khata balances, refunds, purchase receiving |
+| `permissions.test.js` | Role gates, individual permission grants, and that a grant can't escalate to shop control |
+| `auth.test.js` | Registration validation, login, refresh, password change, no hash leakage |
+
+Two tests exist specifically as regression tripwires for bugs that already happened once:
+
+- *"allows many ordinary sales that carry no clientRef"* — guards the sparse-vs-partial index bug
+  described below.
+- *"returns 404 (not 403) when reading another shop's product"* — a 403 would confirm the record
+  exists, leaking information across tenants.
+
+---
+
 ## Offline Selling
 
 Shops here lose connectivity regularly, and a POS that refuses to ring up a sale during an outage is
@@ -212,7 +246,13 @@ mongosh "<your-uri>" --eval "db.sales.dropIndex('shopId_1_clientRef_1')"
 - **Rate limiting** — 300 req/15min per IP globally, 20 req/15min on login and register
 - **Injection** — `express-mongo-sanitize` strips `$`/`.` operators from user input
 - **Validation** — `express-validator` rule chains, enforced by shared `middleware/validate.js`
-- **Roles** — `owner` > `manager` > `cashier`; destructive and financial actions are role-gated
+- **Roles & permissions** — `owner` > `manager` > `cashier` give sensible defaults; the owner can
+  additionally grant individual capabilities (e.g. let one trusted cashier record expenses) without
+  promoting them. Grants are **additive only** — a subtractive model would let an owner lock
+  themselves out of their own shop.
+- **Escalation guard** — `staff:manage` and `shop:settings` are deliberately not grantable, so a
+  granted permission can never be used to take over the shop. Attempts to set them are dropped
+  server-side rather than rejected loudly.
 - **Owner protection** — the owner account can't be deleted, demoted, or modified via staff endpoints
 
 ---
@@ -226,7 +266,9 @@ All endpoints except `/auth/*` require `Authorization: Bearer <accessToken>`.
 POST   /api/auth/register      Create shop + owner account
 POST   /api/auth/login         Sign in
 POST   /api/auth/refresh       Exchange refresh token for new access token
-GET    /api/auth/me            Current user
+GET    /api/auth/me            Current user, shop, and effective permissions
+PUT    /api/auth/profile       Edit your own name/phone
+PUT    /api/auth/password      Change your own password
 ```
 
 ### Products & Categories
@@ -282,8 +324,9 @@ PATCH /api/notifications/read-all
 POST  /api/notifications/send-low-stock            (owner, manager)
 POST  /api/notifications/supplier-order/:supplierId (owner, manager)
 
-GET   /api/shop                 PUT (owner)
-GET   /api/shop/users           POST/PUT/DELETE (owner)
+GET   /api/shop                 PUT (shop:settings)
+GET   /api/shop/permissions     Grantable permissions + role defaults
+GET   /api/shop/users           POST/PUT/DELETE (staff:manage)
 ```
 
 ---

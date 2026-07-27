@@ -1,34 +1,41 @@
 import { Suspense } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import LanguageSwitch from '../components/LanguageSwitch';
 import NotificationBell from '../components/NotificationBell';
 import './DashboardLayout.css';
 
+// `permission: null` means everyone signed in can see it. Anything else is
+// hidden unless the user's effective permissions include it, so a cashier
+// isn't shown links that would only 403 on them.
 const NAV_ITEMS = [
-  { to: '/dashboard', key: 'dashboard', end: true },
-  { to: '/dashboard/pos', key: 'pos' },
-  { to: '/dashboard/inventory', key: 'inventory' },
-  { to: '/dashboard/sales', key: 'sales' },
-  { to: '/dashboard/purchases', key: 'purchases' },
-  { to: '/dashboard/suppliers', key: 'suppliers' },
-  { to: '/dashboard/customers', key: 'customers' },
-  { to: '/dashboard/expenses', key: 'expenses' },
-  { to: '/dashboard/reports', key: 'reports' },
-  { to: '/dashboard/settings', key: 'settings' },
+  { to: '/dashboard', key: 'dashboard', end: true, permission: null },
+  { to: '/dashboard/pos', key: 'pos', permission: null },
+  { to: '/dashboard/inventory', key: 'inventory', permission: null },
+  { to: '/dashboard/categories', key: 'categories', permission: null },
+  { to: '/dashboard/sales', key: 'sales', permission: null },
+  { to: '/dashboard/purchases', key: 'purchases', permission: 'purchase:manage' },
+  { to: '/dashboard/suppliers', key: 'suppliers', permission: 'supplier:manage' },
+  { to: '/dashboard/customers', key: 'customers', permission: null },
+  { to: '/dashboard/expenses', key: 'expenses', permission: 'expense:manage' },
+  { to: '/dashboard/reports', key: 'reports', permission: 'report:view' },
+  { to: '/dashboard/staff', key: 'staff', permission: 'staff:manage' },
+  { to: '/dashboard/settings', key: 'settings', permission: 'shop:settings' },
 ];
 
 export default function DashboardLayout() {
-  const { user, shop, logout } = useAuth();
+  const { user, shop, logout, can } = useAuth();
   const { t } = useTranslation();
+
+  const visibleItems = NAV_ITEMS.filter((item) => !item.permission || can(item.permission));
 
   return (
     <div className="dash-shell">
       <aside className="dash-sidebar">
         <div className="dash-brand">RetailPro</div>
         <nav>
-          {NAV_ITEMS.map((item) => (
+          {visibleItems.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className="dash-nav-link">
               {t(`nav.${item.key}`)}
             </NavLink>
@@ -41,7 +48,9 @@ export default function DashboardLayout() {
           <div className="dash-user">
             <NotificationBell />
             <LanguageSwitch />
-            <span>{user?.name} ({user?.role})</span>
+            <Link to="/dashboard/profile" className="dash-user-link">
+              {user?.name} ({user?.role})
+            </Link>
             <button onClick={logout} className="btn-logout">{t('common.logout')}</button>
           </div>
         </header>

@@ -88,6 +88,19 @@
   color: #475569;
 }
 
+.dash-user-link {
+  color: #475569;
+  text-decoration: none;
+  padding: 0.25rem 0.4rem;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.dash-user-link:hover {
+  background: #f1f5f9;
+  color: #101828;
+}
+
 .btn-logout {
   background: #ef4444;
   color: #fff;

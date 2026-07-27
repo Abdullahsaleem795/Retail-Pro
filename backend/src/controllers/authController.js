@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const Shop = require('../models/Shop');
 const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
+const { getEffectivePermissions } = require('../config/permissions');
 
 const tokenPayload = (user) => ({
   userId: user._id,
@@ -71,8 +72,9 @@ const login = asyncHandler(async (req, res) => {
     success: true,
     accessToken,
     refreshToken,
-    user: { id: user._id, name: user.name, email: user.email, role: user.role },
+    user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role },
     shop: { id: user.shopId._id, name: user.shopId.name, businessType: user.shopId.businessType },
+    permissions: getEffectivePermissions(user),
   });
 });
 
@@ -103,8 +105,71 @@ const refresh = asyncHandler(async (req, res) => {
 });
 
 // @route GET /api/auth/me
+// Returns the shop too - otherwise a page refresh loses the shop name, since
+// the client only receives it in the login response.
 const getMe = asyncHandler(async (req, res) => {
-  res.json({ success: true, user: req.user, shopId: req.shopId, role: req.role });
+  const shop = await Shop.findById(req.shopId).select('name businessType currency language');
+  res.json({
+    success: true,
+    user: {
+      id: req.user._id,
+      name: req.user.name,
+      email: req.user.email,
+      phone: req.user.phone,
+      role: req.user.role,
+    },
+    shop: shop ? { id: shop._id, name: shop.name, businessType: shop.businessType } : null,
+    shopId: req.shopId,
+    role: req.role,
+    permissions: req.permissions,
+  });
 });
 
-module.exports = { registerShopOwner, login, refresh, getMe };
+// @route PUT /api/auth/profile - edit your own name/phone only
+const updateProfile = asyncHandler(async (req, res) => {
+  const { name, phone } = req.body;
+
+  const user = await User.findById(req.userId);
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  // Role, email and permissions are intentionally not editable here - changing
+  // those is a staff-management action and goes through the shop routes.
+  if (name !== undefined) user.name = name;
+  if (phone !== undefined) user.phone = phone;
+  await user.save();
+
+  res.json({ success: true, data: { _id: user._id, name: user.name, phone: user.phone, role: user.role } });
+});
+
+// @route PUT /api/auth/password
+const changePassword = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    res.status(400);
+    throw new Error('New password must be at least 6 characters');
+  }
+
+  const user = await User.findById(req.userId).select('+password');
+  if (!user) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  // Requiring the current password stops someone using an unattended, logged-in
+  // till to lock the owner out of their own account.
+  if (!(await user.comparePassword(currentPassword || ''))) {
+    res.status(401);
+    throw new Error('Current password is incorrect');
+  }
+
+  user.password = newPassword; // hashed by the pre-save hook
+  await user.save();
+
+  res.json({ success: true, message: 'Password updated' });
+});
+
+module.exports = { registerShopOwner, login, refresh, getMe, updateProfile, changePassword };

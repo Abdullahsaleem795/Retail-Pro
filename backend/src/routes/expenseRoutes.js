@@ -1,6 +1,7 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { protect, requireRole } = require('../middleware/auth');
+const { protect, requirePermission } = require('../middleware/auth');
+const { PERMISSIONS } = require('../config/permissions');
 const validate = require('../middleware/validate');
 const { getExpenses, createExpense, updateExpense, deleteExpense } = require('../controllers/expenseController');
 
@@ -15,7 +16,7 @@ const expenseValidation = [
 router.route('/').get(getExpenses).post(expenseValidation, validate, createExpense);
 router
   .route('/:id')
-  .put(requireRole('owner', 'manager'), updateExpense)
-  .delete(requireRole('owner', 'manager'), deleteExpense);
+  .put(requirePermission(PERMISSIONS.EXPENSE_MANAGE), updateExpense)
+  .delete(requirePermission(PERMISSIONS.EXPENSE_MANAGE), deleteExpense);
 
 module.exports = router;

@@ -5,7 +5,18 @@ import { AuthContext } from './authContextDef';
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [shop, setShop] = useState(null);
+  const [permissions, setPermissions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Also used after a profile edit so the topbar reflects the new name without
+  // forcing a re-login.
+  const refreshUser = useCallback(async () => {
+    const { data } = await apiClient.get('/auth/me');
+    setUser(data.user);
+    setShop(data.shop);
+    setPermissions(data.permissions || []);
+    return data;
+  }, []);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -15,8 +26,7 @@ export function AuthProvider({ children }) {
         return;
       }
       try {
-        const { data } = await apiClient.get('/auth/me');
-        setUser(data.user);
+        await refreshUser();
       } catch {
         localStorage.clear();
       } finally {
@@ -24,7 +34,7 @@ export function AuthProvider({ children }) {
       }
     };
     bootstrap();
-  }, []);
+  }, [refreshUser]);
 
   const login = useCallback(async (email, password) => {
     const { data } = await apiClient.post('/auth/login', { email, password });
@@ -32,6 +42,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('refreshToken', data.refreshToken);
     setUser(data.user);
     setShop(data.shop);
+    setPermissions(data.permissions || []);
     return data;
   }, []);
 
@@ -41,6 +52,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('refreshToken', data.refreshToken);
     setUser(data.user);
     setShop(data.shop);
+    setPermissions(data.permissions || []);
     return data;
   }, []);
 
@@ -48,10 +60,26 @@ export function AuthProvider({ children }) {
     localStorage.clear();
     setUser(null);
     setShop(null);
+    setPermissions([]);
   }, []);
 
+  const can = useCallback((permission) => permissions.includes(permission), [permissions]);
+
   return (
-    <AuthContext.Provider value={{ user, shop, loading, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        shop,
+        permissions,
+        loading,
+        login,
+        register,
+        logout,
+        refreshUser,
+        can,
+        isAuthenticated: !!user,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

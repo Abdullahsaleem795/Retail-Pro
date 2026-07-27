@@ -20,6 +20,9 @@ const Suppliers = lazy(() => import('./pages/dashboard/Suppliers'));
 const Customers = lazy(() => import('./pages/dashboard/Customers'));
 const Expenses = lazy(() => import('./pages/dashboard/Expenses'));
 const Settings = lazy(() => import('./pages/dashboard/Settings'));
+const Categories = lazy(() => import('./pages/dashboard/Categories'));
+const Staff = lazy(() => import('./pages/dashboard/Staff'));
+const Profile = lazy(() => import('./pages/dashboard/Profile'));
 
 function App() {
   return (
@@ -41,6 +44,9 @@ function App() {
               <Route path="suppliers" element={<Suppliers />} />
               <Route path="customers" element={<Customers />} />
               <Route path="expenses" element={<Expenses />} />
+              <Route path="categories" element={<Categories />} />
+              <Route path="staff" element={<Staff />} />
+              <Route path="profile" element={<Profile />} />
               <Route path="settings" element={<Settings />} />
             </Route>
           </Route>

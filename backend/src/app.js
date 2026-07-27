@@ -48,15 +48,23 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(mongoSanitize());
 
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
+
+// Rate limiting is skipped in the test environment rather than left unmounted,
+// so the middleware is still wired into the stack the same way it is in
+// production - only its enforcement is disabled. A real integration suite
+// creates far more than 20 accounts per run, which would otherwise trip the
+// same abuse protection real attackers are meant to hit.
+const isTestEnv = process.env.NODE_ENV === 'test';
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => isTestEnv,
 });
 app.use('/api', apiLimiter);
 
@@ -64,6 +72,7 @@ const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: 'Too many auth attempts, please try again later',
+  skip: () => isTestEnv,
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);

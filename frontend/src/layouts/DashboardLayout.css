@@ -1,0 +1,113 @@
+.dash-shell {
+  display: flex;
+  min-height: 100vh;
+  background: #f4f6f8;
+}
+
+.dash-sidebar {
+  width: 230px;
+  background: #101828;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 0;
+  flex-shrink: 0;
+}
+
+.dash-brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  padding: 0 1.5rem 1.5rem;
+  color: #22c55e;
+}
+
+.dash-sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dash-nav-link {
+  padding: 0.65rem 1.5rem;
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 0.92rem;
+  transition: background 0.15s ease, color 0.15s ease;
+  border-left: 3px solid transparent;
+}
+
+.dash-nav-link:hover {
+  background: #1e293b;
+  color: #fff;
+}
+
+.dash-nav-link.active {
+  background: #1e293b;
+  color: #22c55e;
+  border-left-color: #22c55e;
+}
+
+.dash-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dash-topbar {
+  height: 64px;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+}
+
+.dash-shop-name {
+  font-weight: 600;
+  color: #101828;
+}
+
+.dash-user {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.9rem;
+  color: #475569;
+}
+
+.btn-logout {
+  background: #ef4444;
+  color: #fff;
+  border: none;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s ease;
+}
+
+.btn-logout:hover {
+  background: #dc2626;
+}
+
+.dash-content {
+  flex: 1;
+  padding: 1.75rem;
+  overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .dash-sidebar {
+    width: 72px;
+  }
+  .dash-brand {
+    font-size: 0;
+  }
+  .dash-nav-link {
+    padding: 0.65rem 0.75rem;
+    text-align: center;
+    font-size: 0.7rem;
+  }
+}

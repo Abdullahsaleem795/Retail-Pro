@@ -1,7 +1,7 @@
 {
   "project": "RetailPro",
   "description": "Multi-tenant inventory & POS SaaS for Pakistani SME retail shops",
-  "lastUpdated": "2026-07-28",
+  "lastUpdated": "2026-07-28 (Vercel deployment approach note added)",
   "howToUse": "This is the source of truth for project state. Read this file (and knowledge-graph.md for the narrative view) before re-deriving context from conversation history. UPDATE this file whenever a node's state changes, a decision is made, a bug is fixed, or a new task starts - append/edit, don't wait to batch. Keep nodes atomic and edges directional (from -> to).",
 
   "nodes": [
@@ -108,7 +108,9 @@
     }},
     { "id": "deploy_vercel",  "type": "deployment_target", "label": "Vercel (frontend)", "properties": {
         "status": "NOT YET DEPLOYED - blocked on deploy_render being live first (needs backend URL for VITE_API_URL)",
-        "config": "frontend/vercel.json"
+        "config": "frontend/vercel.json",
+        "vercelAccount": "team_9pc2EPB8Uci61AOwmUmoPxTt (abdullahsaleem795's projects) - no existing 'retailpro' project there yet",
+        "deploymentMethod": "Vercel dashboard 'Import Git Repository' (connect to Abdullahsaleem795/Retail-Pro, root directory 'frontend'), NOT the deploy_to_vercel MCP tool - see decisionLog"
     }},
 
     { "id": "demo_account_owner",   "type": "credential", "label": "Demo owner login", "properties": { "email": "demo@retailpro.pk", "password": "demo1234", "shop": "Al-Madina Kiryana Store" } },
@@ -186,6 +188,7 @@
     { "date": "2026-07-27", "decision": "FK constraints on *.product_id, purchases.supplier_id, sales.cashier_id are DEFERRABLE INITIALLY DEFERRED", "why": "A full shop cascade-delete hits two independent FK paths (e.g. shops->products directly AND shops->sales->sale_items) with no ordering guarantee; RESTRICT (correct default) would block deletion of a row a not-yet-cascaded child still references. Deferring the check to commit time fixes this without weakening protection for an ordinary standalone delete." },
     { "date": "2026-07-27", "decision": "Registered a global pg type parser for NUMERIC (OID 1700) -> parseFloat", "why": "node-postgres returns NUMERIC as strings by default to avoid precision loss; every price/quantity field here is numeric(14,x) and the frontend does real arithmetic on these fields. Caught by 12 failing tests." },
     { "date": "2026-07-27", "decision": "Tests use a real isolated Postgres schema (retailpro_test) on the same Supabase project, not mocks or a different engine", "why": "Same reasoning as the original mongodb-memory-server choice - want the test suite to exercise the actual database engine, transactions, and constraints." },
-    { "date": "2026-07-27", "decision": "Vercel deployment is blocked on Render backend deployment", "why": "Vercel only hosts the frontend; deploying it alone gives a URL with no working API behind it. User must complete the Render dashboard steps manually since there's no Render API access." }
+    { "date": "2026-07-27", "decision": "Vercel deployment is blocked on Render backend deployment", "why": "Vercel only hosts the frontend; deploying it alone gives a URL with no working API behind it. User must complete the Render dashboard steps manually since there's no Render API access." },
+    { "date": "2026-07-28", "decision": "Ruled out the deploy_to_vercel MCP tool (direct file upload, no git) for this project; use Vercel's dashboard Git import instead", "why": "That tool requires every source file embedded literally in the tool call. The frontend is 62 files / ~200KB even after excluding package-lock.json; a test read of the assembled payload alone hit ~113K tokens and got truncated by the Read tool's cap, confirming this path is impractical for a project this size (the tool's own description says it's meant for a small app just generated, not an existing multi-file repo). Git import is also strictly better long-term: auto-deploys on every future push, same pattern as Render." }
   ]
 }

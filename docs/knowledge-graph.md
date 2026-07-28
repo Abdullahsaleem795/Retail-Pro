@@ -5,7 +5,8 @@ project context from conversation history.** Update both whenever something chan
 deployment status flip, a bug fix, a new module. Don't let this go stale; a wrong graph is worse than
 no graph.
 
-_Last updated: 2026-07-28 — after the MongoDB → Supabase Postgres migration (commit `38680c3`)._
+_Last updated: 2026-07-28 — after ruling out `deploy_to_vercel` (direct-upload MCP tool) for this
+project's size; Vercel deployment goes through the dashboard Git-import flow instead._
 
 ---
 
@@ -140,6 +141,13 @@ Chronological, most-recent-relevant first. Full detail in `knowledge-graph.json`
    `mongodb-memory-server` choice, just ported to Postgres.
 8. **Vercel is blocked on Render** — deploying the frontend alone would just produce a URL with no
    working backend behind it.
+9. **Ruled out the `deploy_to_vercel` MCP tool** (direct file upload, no git) for this project — it
+   requires every source file embedded literally in the tool call. A test assembly of the frontend's
+   payload (62 files, ~200KB even after excluding `package-lock.json`) hit ~113K tokens and got
+   truncated just being read back — clearly impractical, and the tool's own description says it's for
+   a small just-generated app, not an existing multi-file repo. **Use Vercel's dashboard "Import Git
+   Repository" flow instead** — also better long-term since it auto-deploys on every future push,
+   same as Render.
 
 ---
 

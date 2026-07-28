@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { listCategories, createCategory, updateCategory, deleteCategory } from '../../api/categories';
 import { listProducts } from '../../api/products';
 import SimpleFormModal from '../../components/SimpleFormModal';
+import ConfirmModal from '../../components/ConfirmModal';
 import { useAuth } from '../../context/useAuth';
 import './Inventory.css';
 
@@ -19,6 +20,7 @@ export default function Categories() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
 
   const canManage = can('category:manage');
 
@@ -65,16 +67,12 @@ export default function Categories() {
     }
   };
 
-  const handleDelete = async (category) => {
-    const inUse = counts[category._id] || 0;
-    const warning = inUse
-      ? `"${category.name}" has ${inUse} product${inUse === 1 ? '' : 's'}. They will become uncategorised. Continue?`
-      : `Delete "${category.name}"?`;
-    if (!window.confirm(warning)) return;
-
+  const handleDeleteConfirm = async () => {
+    if (!deleting) return;
     try {
-      await deleteCategory(category._id);
+      await deleteCategory(deleting._id);
       toast.success('Category deleted');
+      setDeleting(null);
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Delete failed');
@@ -132,7 +130,7 @@ export default function Categories() {
                       >
                         Edit
                       </button>
-                      <button className="btn-link btn-link-danger" onClick={() => handleDelete(c)}>
+                      <button className="btn-link btn-link-danger" onClick={() => setDeleting(c)}>
                         Delete
                       </button>
                     </td>
@@ -154,6 +152,20 @@ export default function Categories() {
             setModalOpen(false);
             setEditing(null);
           }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title="Delete Category"
+          message={
+            counts[deleting._id]
+              ? `"${deleting.name}" has ${counts[deleting._id]} product(s). They will become uncategorised. Are you sure?`
+              : `Are you sure you want to delete "${deleting.name}"?`
+          }
+          confirmText="Delete Category"
+          onConfirm={handleDeleteConfirm}
+          onClose={() => setDeleting(null)}
         />
       )}
     </div>

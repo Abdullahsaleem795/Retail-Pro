@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { listProducts, createProduct, updateProduct, deleteProduct } from '../../api/products';
 import { listCategories, createCategory } from '../../api/categories';
 import ProductFormModal from '../../components/ProductFormModal';
+import ConfirmModal from '../../components/ConfirmModal';
 import './Inventory.css';
 
 export default function Inventory() {
@@ -12,6 +13,7 @@ export default function Inventory() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [deletingProduct, setDeletingProduct] = useState(null);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -53,11 +55,12 @@ export default function Inventory() {
     }
   };
 
-  const handleDelete = async (product) => {
-    if (!window.confirm(`Delete "${product.name}"? This cannot be undone.`)) return;
+  const handleDeleteConfirm = async () => {
+    if (!deletingProduct) return;
     try {
-      await deleteProduct(product._id);
+      await deleteProduct(deletingProduct._id);
       toast.success('Product deleted');
+      setDeletingProduct(null);
       fetchProducts();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Delete failed');
@@ -139,7 +142,7 @@ export default function Inventory() {
                       >
                         Edit
                       </button>
-                      <button className="btn-link btn-link-danger" onClick={() => handleDelete(p)}>
+                      <button className="btn-link btn-link-danger" onClick={() => setDeletingProduct(p)}>
                         Delete
                       </button>
                     </td>
@@ -161,6 +164,16 @@ export default function Inventory() {
             setModalOpen(false);
             setEditingProduct(null);
           }}
+        />
+      )}
+
+      {deletingProduct && (
+        <ConfirmModal
+          title="Delete Product"
+          message={`Are you sure you want to delete "${deletingProduct.name}"? This cannot be undone.`}
+          confirmText="Delete Product"
+          onConfirm={handleDeleteConfirm}
+          onClose={() => setDeletingProduct(null)}
         />
       )}
     </div>

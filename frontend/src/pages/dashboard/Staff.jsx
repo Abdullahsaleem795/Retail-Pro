@@ -10,6 +10,7 @@ import {
 } from '../../api/shop';
 import { useAuth } from '../../context/useAuth';
 import { formatDateTime } from '../../utils/format';
+import ConfirmModal from '../../components/ConfirmModal';
 import './Inventory.css';
 
 const ROLES = ['cashier', 'manager'];
@@ -34,14 +35,15 @@ export default function Staff() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listUsers();
       setUsers(res.data);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to load staff');
+    } catch {
+      toast.error('Failed to load staff');
     } finally {
       setLoading(false);
     }
@@ -51,10 +53,10 @@ export default function Staff() {
     fetchUsers();
     getGrantablePermissions()
       .then((res) => {
-        setGrantable(res.data.grantable);
-        setRoleDefaults(res.data.roleDefaults);
+        setGrantable(res.grantablePermissions || []);
+        setRoleDefaults(res.roleDefaults || {});
       })
-      .catch(() => {});
+      .catch(() => toast.error('Failed to load permission definitions'));
   }, [fetchUsers]);
 
   const handleSave = async (payload) => {
@@ -74,11 +76,12 @@ export default function Staff() {
     }
   };
 
-  const handleDelete = async (target) => {
-    if (!window.confirm(`Remove ${target.name} from this shop?`)) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleting) return;
     try {
-      await deleteUser(target._id);
+      await deleteUser(deleting._id);
       toast.success('Staff member removed');
+      setDeleting(null);
       fetchUsers();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Delete failed');
@@ -174,7 +177,7 @@ export default function Staff() {
                           <button className="btn-link" onClick={() => handleToggleActive(u)}>
                             {u.isActive ? 'Suspend' : 'Restore'}
                           </button>
-                          <button className="btn-link btn-link-danger" onClick={() => handleDelete(u)}>
+                          <button className="btn-link btn-link-danger" onClick={() => setDeleting(u)}>
                             Remove
                           </button>
                         </>
@@ -198,6 +201,16 @@ export default function Staff() {
             setModalOpen(false);
             setEditing(null);
           }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title="Remove Staff Member"
+          message={`Are you sure you want to remove ${deleting.name} from this shop?`}
+          confirmText="Remove Staff"
+          onConfirm={handleDeleteConfirm}
+          onClose={() => setDeleting(null)}
         />
       )}
     </div>

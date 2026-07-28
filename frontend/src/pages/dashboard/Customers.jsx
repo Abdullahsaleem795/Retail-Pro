@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { listCustomers, createCustomer, updateCustomer, deleteCustomer } from '../../api/customers';
 import SimpleFormModal from '../../components/SimpleFormModal';
+import ConfirmModal from '../../components/ConfirmModal';
 import './Inventory.css';
 
 const FIELDS = [
@@ -17,6 +18,7 @@ export default function Customers() {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
 
   const fetchCustomers = useCallback(async () => {
     setLoading(true);
@@ -52,11 +54,12 @@ export default function Customers() {
     }
   };
 
-  const handleDelete = async (customer) => {
-    if (!window.confirm(`Delete "${customer.name}"?`)) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleting) return;
     try {
-      await deleteCustomer(customer._id);
+      await deleteCustomer(deleting._id);
       toast.success('Customer deleted');
+      setDeleting(null);
       fetchCustomers();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Delete failed');
@@ -120,7 +123,7 @@ export default function Customers() {
                     >
                       Edit
                     </button>
-                    <button className="btn-link btn-link-danger" onClick={() => handleDelete(c)}>
+                    <button className="btn-link btn-link-danger" onClick={() => setDeleting(c)}>
                       Delete
                     </button>
                   </td>
@@ -141,6 +144,16 @@ export default function Customers() {
             setModalOpen(false);
             setEditing(null);
           }}
+        />
+      )}
+
+      {deleting && (
+        <ConfirmModal
+          title="Delete Customer"
+          message={`Are you sure you want to delete "${deleting.name}"?`}
+          confirmText="Delete Customer"
+          onConfirm={handleDeleteConfirm}
+          onClose={() => setDeleting(null)}
         />
       )}
     </div>

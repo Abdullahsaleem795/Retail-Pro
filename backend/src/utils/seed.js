@@ -10,16 +10,8 @@
  * Safe to re-run: it wipes only the demo shop's data, never other tenants'.
  */
 require('dotenv').config();
-const mongoose = require('mongoose');
-const connectDB = require('../config/db');
-const Shop = require('../models/Shop');
-const User = require('../models/User');
-const Category = require('../models/Category');
-const Product = require('../models/Product');
-const Supplier = require('../models/Supplier');
-const Customer = require('../models/Customer');
-const Sale = require('../models/Sale');
-const Expense = require('../models/Expense');
+const bcrypt = require('bcryptjs');
+const { pool, withTransaction } = require('../config/db');
 
 const DEMO_EMAIL = 'demo@retailpro.pk';
 
@@ -75,143 +67,160 @@ const EXPENSES = [
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 
 const seed = async () => {
-  await connectDB();
-
-  // Scope the wipe to the demo shop only - never touch real tenants
-  const existing = await Shop.findOne({ email: DEMO_EMAIL });
-  if (existing) {
-    const shopId = existing._id;
-    await Promise.all([
-      User.deleteMany({ shopId }),
-      Category.deleteMany({ shopId }),
-      Product.deleteMany({ shopId }),
-      Supplier.deleteMany({ shopId }),
-      Customer.deleteMany({ shopId }),
-      Sale.deleteMany({ shopId }),
-      Expense.deleteMany({ shopId }),
-    ]);
-    await Shop.deleteOne({ _id: shopId });
+  const existing = await pool.query('SELECT id FROM shops WHERE email = $1', [DEMO_EMAIL]);
+  if (existing.rows.length > 0) {
+    // ON DELETE CASCADE on every child table's shop_id FK means this one
+    // delete clears users, categories, products, suppliers, customers,
+    // sales (+ items), purchases (+ items), expenses, and notifications.
+    await pool.query('DELETE FROM shops WHERE id = $1', [existing.rows[0].id]);
     console.log('Cleared previous demo data');
   }
 
-  const shop = await Shop.create({
-    name: 'Al-Madina Kiryana Store',
-    businessType: 'kiryana',
-    ownerName: 'Abdullah Saleem',
-    phone: '03001234567',
-    email: DEMO_EMAIL,
-    address: 'Main Bazar, Model Town',
-    city: 'Lahore',
-    whatsappNumber: '923001234567',
-  });
+  const passwordHash = await bcrypt.hash('demo1234', 10);
 
-  const owner = await User.create({
-    shopId: shop._id,
-    name: 'Abdullah Saleem',
-    email: DEMO_EMAIL,
-    password: 'demo1234',
-    phone: '03001234567',
-    role: 'owner',
-  });
+  const seeded = await withTransaction(async (client) => {
+    const shopResult = await client.query(
+      `INSERT INTO shops (name, business_type, owner_name, phone, email, address, city, whatsapp_number)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      ['Al-Madina Kiryana Store', 'kiryana', 'Abdullah Saleem', '03001234567', DEMO_EMAIL,
+       'Main Bazar, Model Town', 'Lahore', '923001234567']
+    );
+    const shopId = shopResult.rows[0].id;
 
-  await User.create({
-    shopId: shop._id,
-    name: 'Kashif (Cashier)',
-    email: 'cashier@retailpro.pk',
-    password: 'demo1234',
-    role: 'cashier',
-  });
+    const ownerResult = await client.query(
+      `INSERT INTO users (shop_id, name, email, password, phone, role)
+       VALUES ($1,$2,$3,$4,$5,'owner') RETURNING id`,
+      [shopId, 'Abdullah Saleem', DEMO_EMAIL, passwordHash, '03001234567']
+    );
+    const ownerId = ownerResult.rows[0].id;
 
-  const categories = await Category.insertMany(
-    CATEGORIES.map((c) => ({ ...c, shopId: shop._id }))
-  );
-  const categoryMap = Object.fromEntries(categories.map((c) => [c.name, c._id]));
+    await client.query(
+      `INSERT INTO users (shop_id, name, email, password, role) VALUES ($1,$2,$3,$4,'cashier')`,
+      [shopId, 'Kashif (Cashier)', 'cashier@retailpro.pk', passwordHash]
+    );
 
-  const suppliers = await Supplier.insertMany(SUPPLIERS.map((s) => ({ ...s, shopId: shop._id })));
-
-  const products = await Product.insertMany(
-    PRODUCTS.map((p, i) => ({
-      shopId: shop._id,
-      categoryId: categoryMap[p.category],
-      supplierId: suppliers[i % suppliers.length]._id,
-      name: p.name,
-      nameUrdu: p.nameUrdu,
-      sku: `SKU-${String(i + 1).padStart(4, '0')}`,
-      barcode: `890${String(1000000 + i)}`,
-      unit: p.unit,
-      costPrice: p.cost,
-      sellingPrice: p.price,
-      stockQuantity: p.stock,
-      lowStockThreshold: 10,
-    }))
-  );
-
-  const customers = await Customer.insertMany(CUSTOMERS.map((c) => ({ ...c, shopId: shop._id })));
-
-  // 30 days of sales so the trend chart and profit report have real shape
-  const sales = [];
-  for (let daysAgo = 29; daysAgo >= 0; daysAgo -= 1) {
-    const saleDate = new Date();
-    saleDate.setDate(saleDate.getDate() - daysAgo);
-
-    for (let n = 0; n < randomInt(3, 12); n += 1) {
-      const lineCount = randomInt(1, 4);
-      const items = [];
-      let subtotal = 0;
-
-      for (let l = 0; l < lineCount; l += 1) {
-        const product = products[randomInt(0, products.length - 1)];
-        const quantity = randomInt(1, 3);
-        const lineSubtotal = product.sellingPrice * quantity;
-        subtotal += lineSubtotal;
-        items.push({
-          productId: product._id,
-          name: product.name,
-          quantity,
-          unitPrice: product.sellingPrice,
-          costPrice: product.costPrice,
-          subtotal: lineSubtotal,
-        });
-      }
-
-      const useCustomer = Math.random() < 0.3;
-      sales.push({
-        shopId: shop._id,
-        customerId: useCustomer ? customers[randomInt(0, customers.length - 1)]._id : undefined,
-        items,
-        subtotal,
-        discount: 0,
-        tax: 0,
-        totalAmount: subtotal,
-        paymentMethod: ['cash', 'cash', 'cash', 'jazzcash', 'easypaisa'][randomInt(0, 4)],
-        amountPaid: subtotal,
-        cashierId: owner._id,
-        receiptNumber: `RCPT-${saleDate.getTime()}-${n}-${randomInt(100, 999)}`,
-        createdAt: saleDate,
-        updatedAt: saleDate,
-      });
+    const categoryMap = {};
+    for (const c of CATEGORIES) {
+      const { rows } = await client.query(
+        `INSERT INTO categories (shop_id, name, name_urdu) VALUES ($1,$2,$3) RETURNING id`,
+        [shopId, c.name, c.nameUrdu]
+      );
+      categoryMap[c.name] = rows[0].id;
     }
-  }
-  await Sale.insertMany(sales);
 
-  await Expense.insertMany(
-    EXPENSES.map((e) => ({ ...e, shopId: shop._id, createdBy: owner._id, date: new Date() }))
-  );
+    const supplierIds = [];
+    for (const s of SUPPLIERS) {
+      const { rows } = await client.query(
+        `INSERT INTO suppliers (shop_id, name, contact_person, phone, address) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+        [shopId, s.name, s.contactPerson, s.phone, s.address]
+      );
+      supplierIds.push(rows[0].id);
+    }
+
+    const products = [];
+    for (let i = 0; i < PRODUCTS.length; i += 1) {
+      const p = PRODUCTS[i];
+      const { rows } = await client.query(
+        `INSERT INTO products
+           (shop_id, category_id, supplier_id, name, name_urdu, sku, barcode, unit,
+            cost_price, selling_price, stock_quantity, low_stock_threshold)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,10)
+         RETURNING id, name, cost_price, selling_price`,
+        [
+          shopId, categoryMap[p.category], supplierIds[i % supplierIds.length], p.name, p.nameUrdu,
+          `SKU-${String(i + 1).padStart(4, '0')}`, `890${String(1000000 + i)}`, p.unit, p.cost, p.price, p.stock,
+        ]
+      );
+      products.push(rows[0]);
+    }
+
+    const customerIds = [];
+    for (const c of CUSTOMERS) {
+      const { rows } = await client.query(
+        `INSERT INTO customers (shop_id, name, phone) VALUES ($1,$2,$3) RETURNING id`,
+        [shopId, c.name, c.phone]
+      );
+      customerIds.push(rows[0].id);
+    }
+
+    // 30 days of sales so the trend chart and profit report have real shape
+    let saleCount = 0;
+    for (let daysAgo = 29; daysAgo >= 0; daysAgo -= 1) {
+      const saleDate = new Date();
+      saleDate.setDate(saleDate.getDate() - daysAgo);
+
+      for (let n = 0; n < randomInt(3, 12); n += 1) {
+        const lineCount = randomInt(1, 4);
+        const items = [];
+        let subtotal = 0;
+
+        for (let l = 0; l < lineCount; l += 1) {
+          const product = products[randomInt(0, products.length - 1)];
+          const quantity = randomInt(1, 3);
+          const lineSubtotal = Number(product.selling_price) * quantity;
+          subtotal += lineSubtotal;
+          items.push({
+            productId: product.id,
+            name: product.name,
+            quantity,
+            unitPrice: product.selling_price,
+            costPrice: product.cost_price,
+            subtotal: lineSubtotal,
+          });
+        }
+
+        const useCustomer = Math.random() < 0.3;
+        const receiptNumber = `RCPT-${saleDate.getTime()}-${n}-${randomInt(100, 999)}`;
+        const paymentMethod = ['cash', 'cash', 'cash', 'jazzcash', 'easypaisa'][randomInt(0, 4)];
+
+        const saleResult = await client.query(
+          `INSERT INTO sales
+             (shop_id, customer_id, subtotal, discount, tax, total_amount, payment_method,
+              amount_paid, cashier_id, receipt_number, created_at, updated_at)
+           VALUES ($1,$2,$3,0,0,$3,$4,$3,$5,$6,$7,$7)
+           RETURNING id`,
+          [
+            shopId, useCustomer ? customerIds[randomInt(0, customerIds.length - 1)] : null, subtotal,
+            paymentMethod, ownerId, receiptNumber, saleDate,
+          ]
+        );
+        const saleId = saleResult.rows[0].id;
+
+        for (const item of items) {
+          await client.query(
+            `INSERT INTO sale_items (sale_id, product_id, name, quantity, unit_price, cost_price, subtotal)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [saleId, item.productId, item.name, item.quantity, item.unitPrice, item.costPrice, item.subtotal]
+          );
+        }
+        saleCount += 1;
+      }
+    }
+
+    for (const e of EXPENSES) {
+      await client.query(
+        `INSERT INTO expenses (shop_id, category, title, amount, created_by) VALUES ($1,$2,$3,$4,$5)`,
+        [shopId, e.category, e.title, e.amount, ownerId]
+      );
+    }
+
+    return { shopId, productsCount: products.length, salesCount: saleCount, supplierCount: supplierIds.length, customerCount: customerIds.length };
+  });
 
   console.log('\n Demo data seeded successfully\n');
-  console.log(`   Shop:      ${shop.name}`);
+  console.log(`   Shop:      Al-Madina Kiryana Store`);
   console.log(`   Login:     ${DEMO_EMAIL}`);
   console.log(`   Password:  demo1234`);
-  console.log(`   Products:  ${products.length}`);
-  console.log(`   Sales:     ${sales.length} across 30 days`);
-  console.log(`   Suppliers: ${suppliers.length}   Customers: ${customers.length}\n`);
+  console.log(`   Products:  ${seeded.productsCount}`);
+  console.log(`   Sales:     ${seeded.salesCount} across 30 days`);
+  console.log(`   Suppliers: ${seeded.supplierCount}   Customers: ${seeded.customerCount}\n`);
 
-  await mongoose.connection.close();
+  await pool.end();
   process.exit(0);
 };
 
 seed().catch(async (err) => {
   console.error(`Seed failed: ${err.message}`);
-  await mongoose.connection.close();
+  await pool.end().catch(() => {});
   process.exit(1);
 });

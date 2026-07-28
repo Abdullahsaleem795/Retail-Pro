@@ -20,21 +20,19 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-async-handler": "^1.2.0",
-    "express-mongo-sanitize": "^2.2.0",
     "express-rate-limit": "^7.4.0",
     "express-validator": "^7.2.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.6.0",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "node-cron": "^3.0.3",
-    "pdfkit": "^0.15.0"
+    "pdfkit": "^0.15.0",
+    "pg": "^8.22.0"
   },
   "devDependencies": {
     "cross-env": "^10.1.0",
     "jest": "^30.4.2",
-    "mongodb-memory-server": "^11.2.0",
     "nodemon": "^3.1.4",
     "supertest": "^7.2.2"
   },

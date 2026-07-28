@@ -1,6 +1,6 @@
 # RetailPro — Inventory & POS for Pakistani SMEs
 
-A multi-tenant MERN SaaS that replaces the paper register (*bahi khata*) used by kiryana stores,
+A multi-tenant SaaS that replaces the paper register (*bahi khata*) used by kiryana stores,
 general stores, medical stores, and wholesale shops across Pakistan.
 
 Built for shopkeepers who need to know what's selling, what's dead stock, and who owes them money —
@@ -31,10 +31,17 @@ without learning accounting software.
 ## Tech Stack
 
 - **Frontend** — React 19 (Vite), React Router, Context API, Recharts, Framer Motion, react-i18next
-- **Backend** — Node.js, Express, Mongoose
-- **Database** — MongoDB (Atlas)
+- **Backend** — Node.js, Express
+- **Database** — PostgreSQL via [Supabase](https://supabase.com) (accessed with the `pg` driver, raw
+  parameterized SQL — no ORM)
 - **Auth** — JWT access + refresh tokens, bcrypt password hashing
-- **Deployment** — Vercel (frontend), Render (backend), MongoDB Atlas (database)
+- **Deployment** — Vercel (frontend), Render (backend), Supabase (database)
+
+> **Migration note:** this project originally shipped on MongoDB/Mongoose (see git history before the
+> "shift backend to Supabase" commits). The database layer was fully migrated to Postgres; the
+> Express API, JWT auth, and permission system were kept as-is, and the frontend needed **zero**
+> changes — every API response still returns the same field shapes (`_id`, camelCase keys, populated
+> nested objects) the frontend was already built against.
 
 ---
 
@@ -43,9 +50,21 @@ without learning accounting software.
 ### Prerequisites
 
 - Node.js 18+
-- A MongoDB database (free [Atlas M0](https://www.mongodb.com/cloud/atlas/register) cluster works)
+- A Supabase project (free tier works) — [supabase.com](https://supabase.com)
 
-### 1. Backend
+### 1. Provision the database
+
+In the Supabase SQL Editor (or via `psql`/any Postgres client), run
+[`backend/src/db/schema.sql`](backend/src/db/schema.sql) with `{{SCHEMA}}` replaced by `retailpro`:
+
+```bash
+sed 's/{{SCHEMA}}/retailpro/g' backend/src/db/schema.sql | psql "<your-connection-string>"
+```
+
+This creates a dedicated `retailpro` schema with all 12 tables, indexes, and triggers — isolated from
+anything else already living in your Supabase project's `public` schema.
+
+### 2. Backend
 
 ```bash
 cd backend
@@ -56,27 +75,34 @@ cp .env.example .env
 Fill in `.env`:
 
 ```
-MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/retailpro
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres
 JWT_ACCESS_SECRET=<long random string>
 JWT_REFRESH_SECRET=<different long random string>
 CLIENT_URL=http://localhost:5173
 ```
 
-Generate strong secrets with:
+**Use the pooler host**, not `db.<ref>.supabase.co` — Supabase's direct host is IPv6-only, and most
+networks (including many CI/sandbox environments) have no outbound IPv6 route, so a direct connection
+just times out. Get the pooler string from **Supabase Dashboard → Settings → Database → Connection
+Pooling**, "Session" mode, port 5432 (this is a long-running server, not serverless — session mode is
+correct; the transaction-mode pooler on 6543 is for short-lived serverless functions).
+
+Generate strong JWT secrets with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 
-Then start it:
+Verify the connection, then start the server:
 
 ```bash
+npm run test:db
 npm run dev
 ```
 
 API runs on `http://localhost:5000`.
 
-### 2. Seed demo data (optional)
+### 3. Seed demo data (optional)
 
 ```bash
 cd backend
@@ -87,7 +113,7 @@ Creates a demo shop with 18 products, 3 suppliers, 4 customers, and 30 days of s
 
 **Login:** `demo@retailpro.pk` / `demo1234`
 
-### 3. Frontend
+### 4. Frontend
 
 ```bash
 cd frontend
@@ -102,61 +128,97 @@ App runs on `http://localhost:5173`.
 
 ## Multi-Tenancy & Data Isolation
 
-Every business collection carries a `shopId`. Isolation is enforced in one place and never trusted
-from client input:
+Every business table carries a `shop_id`. Isolation is enforced in one place and never trusted from
+client input:
 
 1. On login, the JWT is signed with `{ userId, shopId, role }`.
 2. `middleware/auth.js` verifies the token, re-loads the user from the database, and sets
    `req.shopId` from the **stored user record** — not from anything in the request.
-3. Every controller query includes `shopId: req.shopId`. Writes strip any `shopId` in the request
-   body so a client can't reassign a record to another tenant.
+3. Every controller query includes `shop_id = $N` in its `WHERE` clause. Update statements never let
+   the request body reassign `shop_id`.
 
 ```js
 // Reads and writes are always scoped
-const product = await Product.findOneAndUpdate(
-  { _id: req.params.id, shopId: req.shopId },  // tenant scope in the filter
-  updates,                                      // shopId stripped from body
-  { new: true, runValidators: true }
+const { rows } = await query(
+  'UPDATE products SET ... WHERE id = $1 AND shop_id = $2 RETURNING *',
+  [req.params.id, req.shopId] // tenant scope in the WHERE, not a post-fetch check
 );
 ```
 
-Because the tenant filter lives in the query filter rather than a post-fetch check, a mismatched
-`shopId` returns "not found" instead of leaking the existence of another shop's record.
+Because the tenant filter lives in the `WHERE` clause rather than a post-fetch check, a mismatched
+`shop_id` returns zero rows ("not found") instead of leaking the existence of another shop's record.
+
+### Schema isolation
+
+RetailPro's tables live in their own dedicated Postgres **schema** (`retailpro`), not `public` — this
+matters if your Supabase project hosts anything else, since a `public.users` table from a different
+app would otherwise collide with RetailPro's own `users` table. `DATABASE_URL`'s connection carries a
+`search_path` set via the `pg` startup options, so every unqualified table name in application code
+resolves to the right schema automatically.
 
 ### Indexes
 
-Compound indexes are `shopId`-first so every tenant-scoped query is index-covered and stays fast as
+Compound indexes are `shop_id`-first so every tenant-scoped query is index-covered and stays fast as
 shop count grows:
 
 ```
-users:     { shopId, email }        unique
-products:  { shopId, sku }          unique
-           { shopId, barcode }
-           { shopId, name }
-           { shopId, createdAt }
-           { shopId, stockQuantity }
-sales:     { shopId, receiptNumber } unique
-           { shopId, createdAt }
-           { shopId, customerId }
-purchases: { shopId, createdAt }, { shopId, supplierId }, { shopId, status }
+users:     (shop_id, email)         unique
+products:  (shop_id, sku)           unique
+           (shop_id, barcode)
+           (shop_id, name)
+           (shop_id, created_at)
+           (shop_id, stock_quantity)
+sales:     (shop_id, receipt_number) unique
+           (shop_id, created_at)
+           (shop_id, customer_id)
+purchases: (shop_id, created_at), (shop_id, supplier_id), (shop_id, status)
 ```
 
 ---
 
 ## Transactional Integrity
 
-Checkout and purchase-receiving touch several collections at once, so both run inside MongoDB
-transactions. A stock-out discovered halfway through a sale rolls back the whole thing — you never
-end up with decremented stock and no sale record, or a khata balance that doesn't match a receipt.
+Checkout and purchase-receiving touch several tables at once, so both run inside a single Postgres
+transaction (`BEGIN`/`COMMIT`/`ROLLBACK` via `withTransaction()` in `config/db.js`). A stock-out
+discovered halfway through a sale rolls back the whole thing — you never end up with decremented
+stock and no sale record, or a khata balance that doesn't match a receipt.
 
 ```js
-await session.withTransaction(async () => {
-  // validate stock → decrement products → update customer credit → insert sale
+await withTransaction(async (client) => {
+  // SELECT ... FOR UPDATE (row lock) → validate stock → decrement products
+  // → update customer credit → insert sale + sale_items
 });
 ```
 
-> **Note:** transactions require a replica set. Atlas provides this by default. A standalone local
-> `mongod` does not — use Atlas, or start local Mongo as a single-node replica set.
+Line items (`SELECT ... FOR UPDATE`) are row-locked while a sale is being built, so two concurrent
+checkouts against the same last unit of stock can't both succeed — the second one blocks until the
+first commits, then re-reads the now-correct stock level.
+
+### A cascade-ordering gotcha worth knowing
+
+Deleting a shop cascades through **two independent paths** at once — `shops → products` directly, and
+`shops → sales → sale_items` via `sale_id` — with no guaranteed ordering between them. If Postgres
+processes the `products` path first, it tries to delete a product a not-yet-deleted `sale_items` row
+still references, and the default `RESTRICT` foreign key blocks it — even though that `sale_items` row
+is about to be cascade-deleted anyway, just via the other path.
+
+The fix is **not** `ON DELETE CASCADE` on `sale_items.product_id` (that would let deleting a *single*
+product silently erase real sales history, which should stay blocked). The fix is
+`DEFERRABLE INITIALLY DEFERRED` on that foreign key, which moves the check to transaction-commit time
+— after every cascade path has resolved — so it only fires if a genuine dangling reference remains:
+
+```sql
+ALTER TABLE sale_items
+  ADD CONSTRAINT sale_items_product_id_fkey
+    FOREIGN KEY (product_id) REFERENCES products(id)
+    DEFERRABLE INITIALLY DEFERRED;
+```
+
+The same pattern applies to `purchase_items.product_id`, `purchases.supplier_id`, and
+`sales.cashier_id` — see `src/db/schema.sql` for the full set. This was caught by the seed script's
+re-run cleanup (`DELETE FROM shops WHERE ...`) failing with a foreign-key violation, not by a code
+review — a reminder that cascade deletes deserve an actual integration test, not just a read of the
+DDL.
 
 ---
 
@@ -167,14 +229,14 @@ cd backend
 npm test
 ```
 
-Integration tests run against a real in-memory MongoDB (`mongodb-memory-server`) rather than mocks,
-so transactions, indexes, and Mongoose middleware are all genuinely exercised.
+Integration tests run against a real, isolated Postgres schema (`retailpro_test`) on the same
+Supabase project the app uses — not mocks, and not a different database engine than production, so
+transactions, constraints, and cascade behaviour are all genuinely exercised.
 
-> The in-memory instance is started as a **replica set**, not a standalone. Checkout and
-> purchase-receiving use transactions, which MongoDB only supports on a replica set — a standalone
-> would fail every money-path test.
->
-> The first run downloads a MongoDB binary (~400MB) and is slow. Subsequent runs are fast.
+- `tests/globalSetup.js` provisions `retailpro_test` once per run from the same
+  `src/db/schema.sql` the real `retailpro` schema was built from, so the two can't drift apart.
+- `tests/setup.js` truncates every table between individual tests for isolation.
+- `tests/globalTeardown.js` drops the schema once the whole run finishes.
 
 Coverage focuses on the paths where a bug costs a shopkeeper real money:
 
@@ -213,39 +275,37 @@ Every queued sale carries a client-generated `clientRef` (UUID). If a retry cros
 server response, the server returns the original receipt instead of creating a second one, so stock
 is never decremented twice.
 
-The uniqueness index for this deserves a note, because the obvious version is wrong:
-
-```js
-// WRONG - in a COMPOUND index, `sparse` only skips a document when EVERY indexed
-// field is missing. shopId is always present, so ordinary online sales get
-// indexed with clientRef: null and the second one collides.
-saleSchema.index({ shopId: 1, clientRef: 1 }, { unique: true, sparse: true });
-
-// CORRECT - only index documents that actually carry a clientRef.
-saleSchema.index(
-  { shopId: 1, clientRef: 1 },
-  { unique: true, partialFilterExpression: { clientRef: { $type: 'string' } } }
-);
+```sql
+-- Only real client_refs are indexed - ordinary online sales (client_ref IS NULL)
+-- never collide, since Postgres treats every NULL as distinct in a unique index
+-- even without a partial filter. The partial index is kept anyway so the intent
+-- is explicit rather than relying on that NULL-handling detail implicitly.
+CREATE UNIQUE INDEX idx_sales_shop_client_ref ON sales (shop_id, client_ref)
+  WHERE client_ref IS NOT NULL;
 ```
 
-If you ran an earlier build that created the sparse version, drop it before the corrected index can
-be built:
-
-```bash
-mongosh "<your-uri>" --eval "db.sales.dropIndex('shopId_1_clientRef_1')"
-```
+If the same `clientRef` is submitted twice — a genuine offline-sync retry racing a slow response —
+the second insert hits this unique constraint (Postgres error `23505`). The sale controller catches
+that specific case and returns the row that actually landed instead of a 500, so a retry is always
+safe to send.
 
 ---
 
 ## Security
 
-- **Passwords** — bcrypt, 10 salt rounds, `select: false` so hashes never leave the database layer
+- **Passwords** — bcrypt, 10 salt rounds; password hashes are only ever selected in the two queries
+  that need them (login, change-password), never returned in any API response
 - **Tokens** — short-lived access token (15m) + refresh token (7d); frontend refreshes transparently
   via an axios interceptor with request queueing to avoid refresh stampedes
 - **Headers** — `helmet` for standard security headers
 - **Rate limiting** — 300 req/15min per IP globally, 20 req/15min on login and register
-- **Injection** — `express-mongo-sanitize` strips `$`/`.` operators from user input
+- **Injection** — every query is parameterized (`$1`, `$2`, ...); no string-built SQL anywhere in the
+  codebase
 - **Validation** — `express-validator` rule chains, enforced by shared `middleware/validate.js`
+- **Row-Level Security** — enabled on every RetailPro table with **no policies**, deliberately. The
+  Express backend connects with a direct, credentialed Postgres connection (not Supabase's anon/REST
+  API), so RLS has no bearing on the app's own access — it's on purely so these tables default-deny
+  if the Data API is ever pointed at them.
 - **Roles & permissions** — `owner` > `manager` > `cashier` give sensible defaults; the owner can
   additionally grant individual capabilities (e.g. let one trusted cashier record expenses) without
   promoting them. Grants are **additive only** — a subtractive model would let an owner lock
@@ -365,9 +425,10 @@ sent multiple times.
 
 1. New Web Service, connect the repo, root directory `backend`
 2. Build: `npm install` · Start: `npm start`
-3. Environment variables: `MONGODB_URI`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CLIENT_URL`,
-   `NODE_ENV=production`, plus WhatsApp keys if used
-4. In Atlas → Network Access, allow Render's outbound IPs (or `0.0.0.0/0` if you accept the tradeoff)
+3. Environment variables: `DATABASE_URL` (Supabase pooler connection string), `JWT_ACCESS_SECRET`,
+   `JWT_REFRESH_SECRET`, `CLIENT_URL`, `NODE_ENV=production`, plus WhatsApp keys if used
+4. Render's outbound traffic is IPv4 — this is exactly why `DATABASE_URL` must use Supabase's pooler
+   host, not the IPv6-only direct host
 
 ### Frontend → Vercel
 
@@ -383,9 +444,9 @@ After the frontend is live, set `CLIENT_URL` on the backend to the Vercel URL so
 
 Current design comfortably handles thousands of shops on a single backend instance:
 
-- All hot queries are covered by `shopId`-prefixed compound indexes
+- All hot queries are covered by `shop_id`-prefixed compound indexes
 - Product and sales lists are paginated
-- Reports use MongoDB aggregation rather than loading documents into Node
+- Reports use SQL aggregation (`GROUP BY`, window-free rollups) rather than loading rows into Node
 - Dashboard chunks are lazily loaded so the POS screen (the one used all day) stays ~9 kB
 
 When a single instance is no longer enough:
@@ -394,8 +455,9 @@ When a single instance is no longer enough:
    but one
 2. Move the cron jobs into a dedicated worker service
 3. Add Redis for report caching (dashboard summaries change slowly)
-4. Consider sharding on `shopId` once the working set exceeds RAM — the schema is already
-   shard-ready since every query carries `shopId`
+4. Consider read replicas once the working set exceeds a single Postgres instance's comfortable
+   capacity — every query already carries `shop_id`, so range/hash partitioning `shops` and its
+   descendants stays straightforward if it's ever needed
 
 ---
 
@@ -407,20 +469,22 @@ Retail Pro/
 │   ├── server.js                 Entry point, DB connect, scheduler boot
 │   └── src/
 │       ├── app.js                Express app, middleware, route mounting
-│       ├── config/db.js
-│       ├── models/               Shop, User, Category, Product, Supplier,
-│       │                         Customer, Sale, Purchase, Expense, Notification
-│       ├── controllers/          One per resource
-│       ├── routes/               Validation chains + role gates
+│       ├── config/
+│       │   ├── db.js             pg.Pool, query()/withTransaction() helpers
+│       │   └── permissions.js    Role defaults + grantable permission list
+│       ├── db/schema.sql         Canonical DDL - source of truth for both the
+│       │                         live `retailpro` schema and the test schema
+│       ├── controllers/          One per resource, raw parameterized SQL
+│       ├── routes/               Validation chains + permission gates
 │       ├── middleware/           auth, validate, errorHandler
 │       ├── services/             pdfService, whatsappService, scheduler
-│       └── utils/                generateToken, seed
+│       └── utils/                generateToken, sqlMapper, seed
 └── frontend/
     └── src/
         ├── api/                  One module per backend resource
         ├── components/           ProtectedRoute, modals, LanguageSwitch
         ├── context/              AuthContext + useAuth hook
-        ├── layouts/              DashboardLayout
+        ├── layouts/               DashboardLayout
         ├── pages/                auth/ and dashboard/
         ├── i18n/                 en.json, ur.json, RTL handling
         └── utils/format.js       PKR currency + date formatting

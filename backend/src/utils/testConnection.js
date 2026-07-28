@@ -1,56 +1,56 @@
 /**
  * Connectivity smoke test:  node src/utils/testConnection.js
  *
- * Verifies the Atlas URI works, confirms the deployment is a replica set
- * (required for the transactions used by checkout and purchase-receiving),
- * and lists existing collections.
+ * Verifies DATABASE_URL authenticates and the retailpro schema exists with
+ * all expected tables.
  */
 require('dotenv').config();
-const mongoose = require('mongoose');
+const { Pool } = require('pg');
 
 const run = async () => {
-  const uri = process.env.MONGODB_URI;
+  const url = process.env.DATABASE_URL;
 
-  if (!uri || uri.includes('REPLACE_ME')) {
-    console.error('MONGODB_URI still contains the REPLACE_ME placeholder.');
-    console.error('Set your Atlas database username in backend/.env first.');
+  if (!url) {
+    console.error('DATABASE_URL is not set in backend/.env.');
     process.exit(1);
   }
 
-  console.log('Connecting to MongoDB...');
-  await mongoose.connect(uri, { serverSelectionTimeoutMS: 15000 });
+  console.log('Connecting to Postgres...');
+  const pool = new Pool({ connectionString: url, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 15000 });
 
-  const admin = mongoose.connection.db.admin();
-  const info = await admin.command({ hello: 1 });
+  const client = await pool.connect();
+  try {
+    const version = await client.query('SELECT version(), current_database()');
+    console.log(`\nConnected to: ${version.rows[0].current_database}`);
+    console.log(version.rows[0].version.split(',')[0]);
 
-  console.log(`\nConnected to: ${mongoose.connection.host}`);
-  console.log(`Database:     ${mongoose.connection.name}`);
-  console.log(`Topology:     ${info.setName ? `replica set "${info.setName}"` : 'standalone'}`);
+    const schema = process.env.DB_SCHEMA || 'retailpro';
+    const tables = await client.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 ORDER BY table_name`,
+      [schema]
+    );
 
-  if (info.setName) {
-    console.log('Transactions: supported (checkout and purchase-receiving will work)');
-  } else {
-    console.log('Transactions: NOT supported - standalone server. Sales checkout will fail.');
+    console.log(
+      `\nSchema "${schema}" (${tables.rows.length} tables): ${tables.rows.map((t) => t.table_name).join(', ') || '(none - run the migration first)'}`
+    );
+
+    console.log('\nConnection test passed.');
+  } finally {
+    client.release();
+    await pool.end();
   }
-
-  const collections = await mongoose.connection.db.listCollections().toArray();
-  console.log(
-    `\nCollections (${collections.length}): ${collections.map((c) => c.name).join(', ') || '(empty database)'}`
-  );
-
-  await mongoose.connection.close();
-  console.log('\nConnection test passed.');
-  process.exit(0);
 };
 
-run().catch(async (err) => {
+run().catch((err) => {
   console.error(`\nConnection failed: ${err.message}`);
-  if (/authentication failed/i.test(err.message)) {
-    console.error('-> Check the username and password in backend/.env (Atlas > Database Access).');
+  if (/password authentication failed/i.test(err.message)) {
+    console.error('-> Check the password in DATABASE_URL (Supabase > Settings > Database).');
   }
-  if (/ETIMEDOUT|ENOTFOUND|serverSelectionTimeout/i.test(err.message)) {
-    console.error('-> Check Atlas > Network Access allows your current IP address.');
+  if (/ENOTFOUND|ENODATA|timeout/i.test(err.message)) {
+    console.error(
+      '-> Use the pooler host (aws-0-<region>.pooler.supabase.com), not db.<ref>.supabase.co - the ' +
+        'direct host is IPv6-only and many networks have no outbound IPv6 route.'
+    );
   }
-  await mongoose.connection.close().catch(() => {});
   process.exit(1);
 });

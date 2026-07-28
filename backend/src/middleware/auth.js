@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler');
-const User = require('../models/User');
+const { query } = require('../config/db');
+const { mapRow } = require('../utils/sqlMapper');
 const { getEffectivePermissions, userHasPermission } = require('../config/permissions');
 
 // Verifies the access token and injects { userId, shopId, role } into req.
@@ -24,7 +25,12 @@ const protect = asyncHandler(async (req, res, next) => {
     throw new Error('Not authorized, token invalid or expired');
   }
 
-  const user = await User.findById(decoded.userId).select('-password');
+  const { rows } = await query(
+    'SELECT id, shop_id, name, email, phone, role, permissions, is_active FROM users WHERE id = $1',
+    [decoded.userId]
+  );
+  const user = mapRow(rows[0]);
+
   if (!user || !user.isActive) {
     res.status(401);
     throw new Error('Not authorized, user not found or deactivated');

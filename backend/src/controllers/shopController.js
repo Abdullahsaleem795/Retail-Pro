@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
-const Shop = require('../models/Shop');
-const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const { query } = require('../config/db');
+const { mapRow, mapRows } = require('../utils/sqlMapper');
 const {
   GRANTABLE_PERMISSIONS,
   ROLE_PERMISSIONS,
@@ -23,57 +24,52 @@ const sanitizePermissions = (permissions) =>
   Array.isArray(permissions) ? permissions.filter((p) => GRANTABLE_PERMISSIONS.includes(p)) : undefined;
 
 const getShop = asyncHandler(async (req, res) => {
-  const shop = await Shop.findById(req.shopId);
-  if (!shop) {
+  const { rows } = await query('SELECT * FROM shops WHERE id = $1', [req.shopId]);
+  if (rows.length === 0) {
     res.status(404);
     throw new Error('Shop not found');
   }
-  res.json({ success: true, data: shop });
+  res.json({ success: true, data: mapRow(rows[0]) });
 });
 
-// Only whitelisted fields are updatable - subscriptionPlan and isActive are
-// billing/admin concerns and must never be settable by a tenant.
-const UPDATABLE_FIELDS = [
-  'name',
-  'businessType',
-  'ownerName',
-  'phone',
-  'email',
-  'address',
-  'city',
-  'logoUrl',
-  'language',
-  'whatsappNumber',
-  'lowStockThreshold',
-];
-
 const updateShop = asyncHandler(async (req, res) => {
-  const updates = {};
-  UPDATABLE_FIELDS.forEach((field) => {
-    if (req.body[field] !== undefined) updates[field] = req.body[field];
-  });
+  const {
+    name, businessType, ownerName, phone, email, address, city,
+    logoUrl, language, whatsappNumber, lowStockThreshold,
+  } = req.body;
 
-  const shop = await Shop.findByIdAndUpdate(req.shopId, updates, { new: true, runValidators: true });
-  if (!shop) {
+  const { rows } = await query(
+    `UPDATE shops SET
+       name = COALESCE($1, name), business_type = COALESCE($2, business_type),
+       owner_name = COALESCE($3, owner_name), phone = COALESCE($4, phone),
+       email = COALESCE($5, email), address = COALESCE($6, address), city = COALESCE($7, city),
+       logo_url = COALESCE($8, logo_url), language = COALESCE($9, language),
+       whatsapp_number = COALESCE($10, whatsapp_number),
+       low_stock_threshold = COALESCE($11, low_stock_threshold)
+     WHERE id = $12
+     RETURNING *`,
+    [name, businessType, ownerName, phone, email, address, city, logoUrl, language,
+     whatsappNumber, lowStockThreshold, req.shopId]
+  );
+  if (rows.length === 0) {
     res.status(404);
     throw new Error('Shop not found');
   }
-  res.json({ success: true, data: shop });
+  res.json({ success: true, data: mapRow(rows[0]) });
 });
 
 const getUsers = asyncHandler(async (req, res) => {
-  const users = await User.find({ shopId: req.shopId }).select('-password').sort({ createdAt: 1 });
+  const { rows } = await query(
+    `SELECT id, name, email, phone, role, is_active, last_login_at, permissions
+     FROM users WHERE shop_id = $1 ORDER BY created_at ASC`,
+    [req.shopId]
+  );
+  const users = mapRows(rows);
   res.json({
     success: true,
     count: users.length,
     data: users.map((u) => ({
-      _id: u._id,
-      name: u.name,
-      email: u.email,
-      phone: u.phone,
-      role: u.role,
-      isActive: u.isActive,
-      lastLoginAt: u.lastLoginAt,
+      ...u,
       permissions: u.permissions || [],
       effectivePermissions: getEffectivePermissions(u),
     })),
@@ -89,32 +85,21 @@ const createUser = asyncHandler(async (req, res) => {
     throw new Error('A shop can only have one owner');
   }
 
-  const existing = await User.findOne({ shopId: req.shopId, email });
-  if (existing) {
+  const existing = await query('SELECT id FROM users WHERE shop_id = $1 AND email = $2', [req.shopId, email]);
+  if (existing.rows.length > 0) {
     res.status(409);
     throw new Error('A user with this email already exists in this shop');
   }
 
-  const user = await User.create({
-    shopId: req.shopId,
-    name,
-    email,
-    password,
-    phone,
-    role: role || 'cashier',
-    permissions: sanitizePermissions(permissions) || [],
-  });
+  const passwordHash = await bcrypt.hash(password, 10);
+  const { rows } = await query(
+    `INSERT INTO users (shop_id, name, email, password, phone, role, permissions)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     RETURNING id, name, email, role, permissions`,
+    [req.shopId, name, email, passwordHash, phone, role || 'cashier', sanitizePermissions(permissions) || []]
+  );
 
-  res.status(201).json({
-    success: true,
-    data: {
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      permissions: user.permissions,
-    },
-  });
+  res.status(201).json({ success: true, data: mapRow(rows[0]) });
 });
 
 const updateUser = asyncHandler(async (req, res) => {
@@ -125,56 +110,56 @@ const updateUser = asyncHandler(async (req, res) => {
     throw new Error('Cannot promote a user to owner');
   }
 
-  const target = await User.findOne({ _id: req.params.id, shopId: req.shopId });
-  if (!target) {
+  const targetResult = await query('SELECT * FROM users WHERE id = $1 AND shop_id = $2', [
+    req.params.id,
+    req.shopId,
+  ]);
+  if (targetResult.rows.length === 0) {
     res.status(404);
     throw new Error('User not found');
   }
-  if (target.role === 'owner') {
+  if (targetResult.rows[0].role === 'owner') {
     res.status(403);
     throw new Error('The shop owner account cannot be modified here');
   }
 
   const cleanPermissions = sanitizePermissions(permissions);
 
-  Object.assign(target, {
-    ...(name !== undefined && { name }),
-    ...(phone !== undefined && { phone }),
-    ...(role !== undefined && { role }),
-    ...(isActive !== undefined && { isActive }),
-    ...(cleanPermissions !== undefined && { permissions: cleanPermissions }),
-  });
-  await target.save();
+  const { rows } = await query(
+    `UPDATE users SET
+       name = COALESCE($1, name), phone = COALESCE($2, phone), role = COALESCE($3, role),
+       is_active = COALESCE($4, is_active), permissions = COALESCE($5, permissions)
+     WHERE id = $6
+     RETURNING id, name, role, is_active, permissions`,
+    [name, phone, role, isActive, cleanPermissions, req.params.id]
+  );
 
+  const target = mapRow(rows[0]);
   res.json({
     success: true,
-    data: {
-      _id: target._id,
-      name: target.name,
-      role: target.role,
-      isActive: target.isActive,
-      permissions: target.permissions,
-      effectivePermissions: getEffectivePermissions(target),
-    },
+    data: { ...target, effectivePermissions: getEffectivePermissions(target) },
   });
 });
 
 const deleteUser = asyncHandler(async (req, res) => {
-  const target = await User.findOne({ _id: req.params.id, shopId: req.shopId });
-  if (!target) {
+  const targetResult = await query('SELECT role FROM users WHERE id = $1 AND shop_id = $2', [
+    req.params.id,
+    req.shopId,
+  ]);
+  if (targetResult.rows.length === 0) {
     res.status(404);
     throw new Error('User not found');
   }
-  if (target.role === 'owner') {
+  if (targetResult.rows[0].role === 'owner') {
     res.status(403);
     throw new Error('The shop owner account cannot be deleted');
   }
-  if (String(target._id) === String(req.userId)) {
+  if (String(req.params.id) === String(req.userId)) {
     res.status(400);
     throw new Error('You cannot delete your own account');
   }
 
-  await target.deleteOne();
+  await query('DELETE FROM users WHERE id = $1', [req.params.id]);
   res.json({ success: true, message: 'User removed' });
 });
 

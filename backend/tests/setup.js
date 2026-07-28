@@ -1,29 +1,28 @@
 /**
- * Spins up an in-memory MongoDB for the test run.
+ * Per-test-file lifecycle. The `retailpro_test` schema itself is created
+ * once in globalSetup.js (not here) - this file only needs to isolate tests
+ * from each other and clean up this file's own database connection.
  *
- * A REPLICA SET is required, not a standalone: checkout and purchase-receiving
- * run inside transactions, and MongoDB only supports those on a replica set.
- * A standalone server would fail every money-path test with
- * "Transaction numbers are only allowed on a replica set member or mongos".
+ * Jest gives each test file its own module registry, so each file's
+ * `require('../src/config/db')` creates a genuinely separate `pg.Pool`
+ * instance. Each file is therefore responsible for closing its own pool in
+ * afterAll, or Jest hangs waiting for the open TCP handle.
  */
-const mongoose = require('mongoose');
-const { MongoMemoryReplSet } = require('mongodb-memory-server');
-
-let replSet;
-
-beforeAll(async () => {
-  replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
-  await mongoose.connect(replSet.getUri());
-}, 120000);
+const { pool, query } = require('../src/config/db');
 
 afterEach(async () => {
-  // Wipe between tests so ordering never matters
-  const { collections } = mongoose.connection;
-  await Promise.all(Object.values(collections).map((c) => c.deleteMany({})));
+  const { rows } = await query(
+    `SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema()`
+  );
+  if (rows.length === 0) return;
+
+  // CASCADE handles the FK relationships between these tables regardless of
+  // listing order; multi-table TRUNCATE is atomic, so this can't leave a
+  // half-cleared schema between tests.
+  const tableList = rows.map((r) => `"${r.table_name}"`).join(', ');
+  await query(`TRUNCATE ${tableList} CASCADE`);
 });
 
 afterAll(async () => {
-  await mongoose.connection.dropDatabase();
-  await mongoose.connection.close();
-  if (replSet) await replSet.stop();
-}, 60000);
+  await pool.end();
+});

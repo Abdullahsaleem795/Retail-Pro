@@ -1,8 +1,6 @@
 const asyncHandler = require('express-async-handler');
-const Notification = require('../models/Notification');
-const Product = require('../models/Product');
-const Shop = require('../models/Shop');
-const Supplier = require('../models/Supplier');
+const { query } = require('../config/db');
+const { mapRow, mapRows } = require('../utils/sqlMapper');
 const {
   sendTextMessage,
   buildLowStockMessage,
@@ -10,26 +8,33 @@ const {
 } = require('../services/whatsappService');
 
 const getNotifications = asyncHandler(async (req, res) => {
-  const notifications = await Notification.find({ shopId: req.shopId }).sort({ createdAt: -1 }).limit(50);
-  const unreadCount = await Notification.countDocuments({ shopId: req.shopId, isRead: false });
-  res.json({ success: true, unreadCount, count: notifications.length, data: notifications });
+  const [listResult, unreadResult] = await Promise.all([
+    query('SELECT * FROM notifications WHERE shop_id = $1 ORDER BY created_at DESC LIMIT 50', [req.shopId]),
+    query('SELECT COUNT(*) FROM notifications WHERE shop_id = $1 AND is_read = false', [req.shopId]),
+  ]);
+  const notifications = mapRows(listResult.rows);
+  res.json({
+    success: true,
+    unreadCount: Number(unreadResult.rows[0].count),
+    count: notifications.length,
+    data: notifications,
+  });
 });
 
 const markAsRead = asyncHandler(async (req, res) => {
-  const notification = await Notification.findOneAndUpdate(
-    { _id: req.params.id, shopId: req.shopId },
-    { isRead: true },
-    { new: true }
+  const { rows } = await query(
+    `UPDATE notifications SET is_read = true WHERE id = $1 AND shop_id = $2 RETURNING *`,
+    [req.params.id, req.shopId]
   );
-  if (!notification) {
+  if (rows.length === 0) {
     res.status(404);
     throw new Error('Notification not found');
   }
-  res.json({ success: true, data: notification });
+  res.json({ success: true, data: mapRow(rows[0]) });
 });
 
 const markAllAsRead = asyncHandler(async (req, res) => {
-  await Notification.updateMany({ shopId: req.shopId, isRead: false }, { isRead: true });
+  await query('UPDATE notifications SET is_read = true WHERE shop_id = $1 AND is_read = false', [req.shopId]);
   res.json({ success: true, message: 'All notifications marked as read' });
 });
 
@@ -37,12 +42,16 @@ const markAllAsRead = asyncHandler(async (req, res) => {
 // On-demand trigger so the shopkeeper can push the alert to their own WhatsApp
 // without waiting for the nightly cron.
 const sendLowStockAlert = asyncHandler(async (req, res) => {
-  const shop = await Shop.findById(req.shopId);
-  const lowStockProducts = await Product.find({
-    shopId: req.shopId,
-    isActive: true,
-    $expr: { $lte: ['$stockQuantity', '$lowStockThreshold'] },
-  }).select('name stockQuantity unit');
+  const [shopResult, lowStockResult] = await Promise.all([
+    query('SELECT * FROM shops WHERE id = $1', [req.shopId]),
+    query(
+      `SELECT name, stock_quantity, unit FROM products
+       WHERE shop_id = $1 AND is_active = true AND stock_quantity <= low_stock_threshold`,
+      [req.shopId]
+    ),
+  ]);
+  const shop = mapRow(shopResult.rows[0]);
+  const lowStockProducts = mapRows(lowStockResult.rows);
 
   if (lowStockProducts.length === 0) {
     res.status(400);
@@ -61,35 +70,36 @@ const sendLowStockAlert = asyncHandler(async (req, res) => {
     console.error(`[whatsapp] low stock alert failed for shop ${req.shopId}: ${err.message}`);
   }
 
-  const notification = await Notification.create({
-    shopId: req.shopId,
-    type: 'low_stock',
-    title: `${lowStockProducts.length} items low on stock`,
-    message,
-    channel: 'whatsapp',
-    deliveryStatus,
-  });
+  const { rows } = await query(
+    `INSERT INTO notifications (shop_id, type, title, message, channel, delivery_status)
+     VALUES ($1,'low_stock',$2,$3,'whatsapp',$4) RETURNING *`,
+    [req.shopId, `${lowStockProducts.length} items low on stock`, message, deliveryStatus]
+  );
 
-  res.status(201).json({ success: true, deliveryStatus, data: notification });
+  res.status(201).json({ success: true, deliveryStatus, data: mapRow(rows[0]) });
 });
 
 // POST /api/notifications/supplier-order/:supplierId
 // Generates a ready-to-send restock message for a supplier, prefilled with the
 // low-stock items that supplier normally provides.
 const sendSupplierOrderDraft = asyncHandler(async (req, res) => {
-  const shop = await Shop.findById(req.shopId);
-  const supplier = await Supplier.findOne({ _id: req.params.supplierId, shopId: req.shopId });
+  const [shopResult, supplierResult] = await Promise.all([
+    query('SELECT * FROM shops WHERE id = $1', [req.shopId]),
+    query('SELECT * FROM suppliers WHERE id = $1 AND shop_id = $2', [req.params.supplierId, req.shopId]),
+  ]);
+  const shop = mapRow(shopResult.rows[0]);
+  const supplier = mapRow(supplierResult.rows[0]);
   if (!supplier) {
     res.status(404);
     throw new Error('Supplier not found');
   }
 
-  const items = await Product.find({
-    shopId: req.shopId,
-    supplierId: supplier._id,
-    isActive: true,
-    $expr: { $lte: ['$stockQuantity', '$lowStockThreshold'] },
-  }).select('name stockQuantity lowStockThreshold unit');
+  const { rows } = await query(
+    `SELECT name, stock_quantity, low_stock_threshold, unit FROM products
+     WHERE shop_id = $1 AND supplier_id = $2 AND is_active = true AND stock_quantity <= low_stock_threshold`,
+    [req.shopId, supplier._id]
+  );
+  const items = mapRows(rows);
 
   if (items.length === 0) {
     res.status(400);

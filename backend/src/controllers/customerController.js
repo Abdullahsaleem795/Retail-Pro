@@ -1,49 +1,66 @@
 const asyncHandler = require('express-async-handler');
-const Customer = require('../models/Customer');
+const { query } = require('../config/db');
+const { mapRow, mapRows } = require('../utils/sqlMapper');
 
 const getCustomers = asyncHandler(async (req, res) => {
   const { search } = req.query;
-  const query = { shopId: req.shopId };
+  const params = [req.shopId];
+  let where = 'WHERE shop_id = $1';
   if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { phone: { $regex: search, $options: 'i' } },
-    ];
+    params.push(`%${search}%`);
+    where += ` AND (name ILIKE $${params.length} OR phone ILIKE $${params.length})`;
   }
-  const customers = await Customer.find(query).sort({ name: 1 });
+  const { rows } = await query(`SELECT * FROM customers ${where} ORDER BY name`, params);
+  const customers = mapRows(rows);
   res.json({ success: true, count: customers.length, data: customers });
 });
 
 const getCustomer = asyncHandler(async (req, res) => {
-  const customer = await Customer.findOne({ _id: req.params.id, shopId: req.shopId });
-  if (!customer) {
+  const { rows } = await query('SELECT * FROM customers WHERE id = $1 AND shop_id = $2', [
+    req.params.id,
+    req.shopId,
+  ]);
+  if (rows.length === 0) {
     res.status(404);
     throw new Error('Customer not found');
   }
-  res.json({ success: true, data: customer });
+  res.json({ success: true, data: mapRow(rows[0]) });
 });
 
 const createCustomer = asyncHandler(async (req, res) => {
-  const customer = await Customer.create({ ...req.body, shopId: req.shopId });
-  res.status(201).json({ success: true, data: customer });
+  const { name, phone, email, address } = req.body;
+  const { rows } = await query(
+    `INSERT INTO customers (shop_id, name, phone, email, address) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [req.shopId, name, phone, email, address]
+  );
+  res.status(201).json({ success: true, data: mapRow(rows[0]) });
 });
 
 const updateCustomer = asyncHandler(async (req, res) => {
-  const { shopId, ...updates } = req.body;
-  const customer = await Customer.findOneAndUpdate({ _id: req.params.id, shopId: req.shopId }, updates, {
-    new: true,
-    runValidators: true,
-  });
-  if (!customer) {
+  const { shopId, ...body } = req.body;
+  const { name, phone, email, address, creditBalance, isActive } = body;
+  const { rows } = await query(
+    `UPDATE customers SET
+       name = COALESCE($1, name), phone = COALESCE($2, phone), email = COALESCE($3, email),
+       address = COALESCE($4, address), credit_balance = COALESCE($5, credit_balance),
+       is_active = COALESCE($6, is_active)
+     WHERE id = $7 AND shop_id = $8
+     RETURNING *`,
+    [name, phone, email, address, creditBalance, isActive, req.params.id, req.shopId]
+  );
+  if (rows.length === 0) {
     res.status(404);
     throw new Error('Customer not found');
   }
-  res.json({ success: true, data: customer });
+  res.json({ success: true, data: mapRow(rows[0]) });
 });
 
 const deleteCustomer = asyncHandler(async (req, res) => {
-  const customer = await Customer.findOneAndDelete({ _id: req.params.id, shopId: req.shopId });
-  if (!customer) {
+  const { rows } = await query('DELETE FROM customers WHERE id = $1 AND shop_id = $2 RETURNING id', [
+    req.params.id,
+    req.shopId,
+  ]);
+  if (rows.length === 0) {
     res.status(404);
     throw new Error('Customer not found');
   }

@@ -3,7 +3,6 @@ const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
-const mongoSanitize = require('express-mongo-sanitize');
 const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./routes/authRoutes');
@@ -46,7 +45,10 @@ app.use(
 app.use(compression());
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(mongoSanitize());
+// express-mongo-sanitize was MongoDB-specific ($/. key stripping) and is no
+// longer relevant now the data layer is Postgres; every query in this app
+// uses parameterized SQL ($1, $2, ...), which is the actual SQL-injection
+// defense and doesn't depend on this middleware.
 
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));

@@ -1,10 +1,6 @@
 const cron = require('node-cron');
-const mongoose = require('mongoose');
-const Shop = require('../models/Shop');
-const Product = require('../models/Product');
-const Sale = require('../models/Sale');
-const Expense = require('../models/Expense');
-const Notification = require('../models/Notification');
+const { query } = require('../config/db');
+const { mapRows } = require('../utils/sqlMapper');
 const {
   sendTextMessage,
   buildLowStockMessage,
@@ -15,48 +11,45 @@ const {
 const TIMEZONE = 'Asia/Karachi';
 
 const recordAndSend = async (shop, { type, title, message }) => {
-  const target = shop.whatsappNumber || shop.phone;
+  const target = shop.whatsapp_number || shop.phone;
   let deliveryStatus = 'sent';
   try {
     const result = await sendTextMessage(target, message);
     if (result?.skipped) deliveryStatus = 'skipped';
   } catch (err) {
     deliveryStatus = 'failed';
-    console.error(`[scheduler] ${type} failed for shop ${shop._id}: ${err.message}`);
+    console.error(`[scheduler] ${type} failed for shop ${shop.id}: ${err.message}`);
   }
-  await Notification.create({
-    shopId: shop._id,
-    type,
-    title,
-    message,
-    channel: 'whatsapp',
-    deliveryStatus,
-  });
+  await query(
+    `INSERT INTO notifications (shop_id, type, title, message, channel, delivery_status)
+     VALUES ($1,$2,$3,$4,'whatsapp',$5)`,
+    [shop.id, type, title, message, deliveryStatus]
+  );
 };
 
 // Iterates every active shop. Each shop's data stays isolated by shopId - the
 // scheduler never aggregates across tenants.
 const forEachActiveShop = async (handler) => {
-  const shops = await Shop.find({ isActive: true });
+  const { rows: shops } = await query('SELECT * FROM shops WHERE is_active = true');
   for (const shop of shops) {
     try {
       await handler(shop);
     } catch (err) {
-      console.error(`[scheduler] shop ${shop._id} failed: ${err.message}`);
+      console.error(`[scheduler] shop ${shop.id} failed: ${err.message}`);
     }
   }
 };
 
 const runLowStockCheck = async () => {
   await forEachActiveShop(async (shop) => {
-    const lowStock = await Product.find({
-      shopId: shop._id,
-      isActive: true,
-      $expr: { $lte: ['$stockQuantity', '$lowStockThreshold'] },
-    }).select('name stockQuantity unit');
+    const { rows } = await query(
+      `SELECT name, stock_quantity, unit FROM products
+       WHERE shop_id = $1 AND is_active = true AND stock_quantity <= low_stock_threshold`,
+      [shop.id]
+    );
+    if (rows.length === 0) return;
 
-    if (lowStock.length === 0) return;
-
+    const lowStock = mapRows(rows);
     await recordAndSend(shop, {
       type: 'low_stock',
       title: `${lowStock.length} items low on stock`,
@@ -71,32 +64,26 @@ const runDailySalesReport = async () => {
   const dayEnd = new Date();
 
   await forEachActiveShop(async (shop) => {
-    const shopId = new mongoose.Types.ObjectId(shop._id);
-
-    const [salesAgg, expenseAgg] = await Promise.all([
-      Sale.aggregate([
-        { $match: { shopId, status: 'completed', createdAt: { $gte: dayStart, $lte: dayEnd } } },
-        { $unwind: '$items' },
-        {
-          $group: {
-            _id: null,
-            revenue: { $sum: '$items.subtotal' },
-            cost: { $sum: { $multiply: ['$items.costPrice', '$items.quantity'] } },
-            receipts: { $addToSet: '$_id' },
-          },
-        },
-      ]),
-      Expense.aggregate([
-        { $match: { shopId, date: { $gte: dayStart, $lte: dayEnd } } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
+    const [salesResult, expenseResult] = await Promise.all([
+      query(
+        `SELECT COALESCE(SUM(si.subtotal),0) AS revenue, COALESCE(SUM(si.cost_price*si.quantity),0) AS cost,
+                COUNT(DISTINCT s.id) AS receipts
+         FROM sales s JOIN sale_items si ON si.sale_id = s.id
+         WHERE s.shop_id = $1 AND s.status = 'completed' AND s.created_at BETWEEN $2 AND $3`,
+        [shop.id, dayStart, dayEnd]
+      ),
+      query(`SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE shop_id = $1 AND date BETWEEN $2 AND $3`, [
+        shop.id,
+        dayStart,
+        dayEnd,
       ]),
     ]);
 
-    const revenue = salesAgg[0]?.revenue || 0;
+    const revenue = Number(salesResult.rows[0].revenue);
     if (revenue === 0) return; // nothing sold today, don't spam the owner
 
-    const cogs = salesAgg[0]?.cost || 0;
-    const expenses = expenseAgg[0]?.total || 0;
+    const cogs = Number(salesResult.rows[0].cost);
+    const expenses = Number(expenseResult.rows[0].total);
     const grossProfit = revenue - cogs;
 
     await recordAndSend(shop, {
@@ -105,7 +92,7 @@ const runDailySalesReport = async () => {
       message: buildDailySalesMessage(shop.name, {
         date: dayStart.toLocaleDateString('en-PK'),
         totalSales: revenue,
-        transactions: salesAgg[0]?.receipts?.length || 0,
+        transactions: Number(salesResult.rows[0].receipts),
         grossProfit,
         expenses,
         netProfit: grossProfit - expenses,
@@ -120,31 +107,25 @@ const runWeeklyProfitReport = async () => {
   from.setDate(from.getDate() - 7);
 
   await forEachActiveShop(async (shop) => {
-    const shopId = new mongoose.Types.ObjectId(shop._id);
-
-    const [salesAgg, expenseAgg] = await Promise.all([
-      Sale.aggregate([
-        { $match: { shopId, status: 'completed', createdAt: { $gte: from, $lte: to } } },
-        { $unwind: '$items' },
-        {
-          $group: {
-            _id: null,
-            revenue: { $sum: '$items.subtotal' },
-            cost: { $sum: { $multiply: ['$items.costPrice', '$items.quantity'] } },
-          },
-        },
-      ]),
-      Expense.aggregate([
-        { $match: { shopId, date: { $gte: from, $lte: to } } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
+    const [salesResult, expenseResult] = await Promise.all([
+      query(
+        `SELECT COALESCE(SUM(si.subtotal),0) AS revenue, COALESCE(SUM(si.cost_price*si.quantity),0) AS cost
+         FROM sales s JOIN sale_items si ON si.sale_id = s.id
+         WHERE s.shop_id = $1 AND s.status = 'completed' AND s.created_at BETWEEN $2 AND $3`,
+        [shop.id, from, to]
+      ),
+      query(`SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE shop_id = $1 AND date BETWEEN $2 AND $3`, [
+        shop.id,
+        from,
+        to,
       ]),
     ]);
 
-    const revenue = salesAgg[0]?.revenue || 0;
+    const revenue = Number(salesResult.rows[0].revenue);
     if (revenue === 0) return;
 
-    const cogs = salesAgg[0]?.cost || 0;
-    const expenses = expenseAgg[0]?.total || 0;
+    const cogs = Number(salesResult.rows[0].cost);
+    const expenses = Number(expenseResult.rows[0].total);
     const grossProfit = revenue - cogs;
 
     await recordAndSend(shop, {

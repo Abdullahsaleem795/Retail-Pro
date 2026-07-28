@@ -1,7 +1,8 @@
 const asyncHandler = require('express-async-handler');
 const jwt = require('jsonwebtoken');
-const Shop = require('../models/Shop');
-const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const { query, withTransaction } = require('../config/db');
+const { mapRow } = require('../utils/sqlMapper');
 const { generateAccessToken, generateRefreshToken } = require('../utils/generateToken');
 const { getEffectivePermissions } = require('../config/permissions');
 
@@ -12,27 +13,28 @@ const tokenPayload = (user) => ({
 });
 
 // @route POST /api/auth/register
-// Creates a new Shop plus its first user (owner). This is the only place a
-// shopId is ever generated - every subsequent request derives shopId from the JWT.
+// Creates a new Shop plus its first user (owner) atomically. This is the only
+// place a shopId is ever generated - every subsequent request derives shopId
+// from the JWT, never from client input.
 const registerShopOwner = asyncHandler(async (req, res) => {
   const { shopName, businessType, ownerName, phone, email, password, city } = req.body;
 
-  const shop = await Shop.create({
-    name: shopName,
-    businessType,
-    ownerName,
-    phone,
-    email,
-    city,
-  });
+  const passwordHash = await bcrypt.hash(password, 10);
 
-  const user = await User.create({
-    shopId: shop._id,
-    name: ownerName,
-    email,
-    password,
-    phone,
-    role: 'owner',
+  const { shop, user } = await withTransaction(async (client) => {
+    const shopResult = await client.query(
+      `INSERT INTO shops (name, business_type, owner_name, phone, email, city)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [shopName, businessType || 'general', ownerName, phone, email, city]
+    );
+    const shopRow = mapRow(shopResult.rows[0]);
+
+    const userResult = await client.query(
+      `INSERT INTO users (shop_id, name, email, password, phone, role)
+       VALUES ($1, $2, $3, $4, $5, 'owner') RETURNING *`,
+      [shopRow._id, ownerName, email, passwordHash, phone]
+    );
+    return { shop: shopRow, user: mapRow(userResult.rows[0]) };
   });
 
   const accessToken = generateAccessToken(tokenPayload(user));
@@ -51,20 +53,28 @@ const registerShopOwner = asyncHandler(async (req, res) => {
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email }).select('+password').populate('shopId', 'name businessType isActive');
-  if (!user || !(await user.comparePassword(password))) {
+  const { rows } = await query(
+    `SELECT u.*, s.id AS shop_pk, s.name AS shop_name, s.business_type AS shop_business_type,
+            s.is_active AS shop_is_active
+     FROM users u JOIN shops s ON s.id = u.shop_id
+     WHERE u.email = $1`,
+    [email]
+  );
+
+  if (rows.length === 0 || !(await bcrypt.compare(password, rows[0].password))) {
     res.status(401);
     throw new Error('Invalid email or password');
   }
 
-  if (!user.isActive || !user.shopId?.isActive) {
+  const row = rows[0];
+  if (!row.is_active || !row.shop_is_active) {
     res.status(403);
     throw new Error('Account or shop is deactivated');
   }
 
-  user.lastLoginAt = new Date();
-  await user.save();
+  await query('UPDATE users SET last_login_at = now() WHERE id = $1', [row.id]);
 
+  const user = mapRow(row);
   const accessToken = generateAccessToken(tokenPayload(user));
   const refreshToken = generateRefreshToken(tokenPayload(user));
 
@@ -73,7 +83,7 @@ const login = asyncHandler(async (req, res) => {
     accessToken,
     refreshToken,
     user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role },
-    shop: { id: user.shopId._id, name: user.shopId.name, businessType: user.shopId.businessType },
+    shop: { id: row.shop_pk, name: row.shop_name, businessType: row.shop_business_type },
     permissions: getEffectivePermissions(user),
   });
 });
@@ -94,7 +104,10 @@ const refresh = asyncHandler(async (req, res) => {
     throw new Error('Refresh token invalid or expired');
   }
 
-  const user = await User.findById(decoded.userId);
+  const { rows } = await query('SELECT id, shop_id, role, is_active FROM users WHERE id = $1', [
+    decoded.userId,
+  ]);
+  const user = mapRow(rows[0]);
   if (!user || !user.isActive) {
     res.status(401);
     throw new Error('User not found or deactivated');
@@ -108,7 +121,9 @@ const refresh = asyncHandler(async (req, res) => {
 // Returns the shop too - otherwise a page refresh loses the shop name, since
 // the client only receives it in the login response.
 const getMe = asyncHandler(async (req, res) => {
-  const shop = await Shop.findById(req.shopId).select('name businessType currency language');
+  const { rows } = await query('SELECT id, name, business_type FROM shops WHERE id = $1', [req.shopId]);
+  const shop = mapRow(rows[0]);
+
   res.json({
     success: true,
     user: {
@@ -129,19 +144,23 @@ const getMe = asyncHandler(async (req, res) => {
 const updateProfile = asyncHandler(async (req, res) => {
   const { name, phone } = req.body;
 
-  const user = await User.findById(req.userId);
-  if (!user) {
+  // Role, email and permissions are intentionally not editable here - changing
+  // those is a staff-management action and goes through the shop routes.
+  const { rows } = await query(
+    `UPDATE users SET
+       name = COALESCE($1, name),
+       phone = COALESCE($2, phone)
+     WHERE id = $3
+     RETURNING id, name, phone, role`,
+    [name, phone, req.userId]
+  );
+
+  if (rows.length === 0) {
     res.status(404);
     throw new Error('User not found');
   }
 
-  // Role, email and permissions are intentionally not editable here - changing
-  // those is a staff-management action and goes through the shop routes.
-  if (name !== undefined) user.name = name;
-  if (phone !== undefined) user.phone = phone;
-  await user.save();
-
-  res.json({ success: true, data: { _id: user._id, name: user.name, phone: user.phone, role: user.role } });
+  res.json({ success: true, data: mapRow(rows[0]) });
 });
 
 // @route PUT /api/auth/password
@@ -153,21 +172,21 @@ const changePassword = asyncHandler(async (req, res) => {
     throw new Error('New password must be at least 6 characters');
   }
 
-  const user = await User.findById(req.userId).select('+password');
-  if (!user) {
+  const { rows } = await query('SELECT password FROM users WHERE id = $1', [req.userId]);
+  if (rows.length === 0) {
     res.status(404);
     throw new Error('User not found');
   }
 
   // Requiring the current password stops someone using an unattended, logged-in
   // till to lock the owner out of their own account.
-  if (!(await user.comparePassword(currentPassword || ''))) {
+  if (!(await bcrypt.compare(currentPassword || '', rows[0].password))) {
     res.status(401);
     throw new Error('Current password is incorrect');
   }
 
-  user.password = newPassword; // hashed by the pre-save hook
-  await user.save();
+  const newHash = await bcrypt.hash(newPassword, 10);
+  await query('UPDATE users SET password = $1 WHERE id = $2', [newHash, req.userId]);
 
   res.json({ success: true, message: 'Password updated' });
 });

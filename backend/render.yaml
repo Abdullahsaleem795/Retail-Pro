@@ -11,7 +11,7 @@ services:
       - key: NODE_ENV
         value: production
       # Set these in the Render dashboard, not here - they are secrets.
-      - key: MONGODB_URI
+      - key: DATABASE_URL
         sync: false
       - key: JWT_ACCESS_SECRET
         sync: false

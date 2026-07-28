@@ -79,6 +79,9 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
+app.get(['/', '/api'], (req, res) =>
+  res.json({ success: true, message: 'RetailPro API is running', health: '/api/health' })
+);
 app.get('/api/health', (req, res) => res.json({ success: true, status: 'ok', timestamp: new Date() }));
 
 app.use('/api/auth', authRoutes);

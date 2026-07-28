@@ -1,4 +1,4 @@
-import { lazy } from 'react';
+import { lazy, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
@@ -25,6 +25,10 @@ const Staff = lazy(() => import('./pages/dashboard/Staff'));
 const Profile = lazy(() => import('./pages/dashboard/Profile'));
 
 function App() {
+  useEffect(() => {
+    document.title = 'Retail Pro';
+  }, []);
+
   return (
     <AuthProvider>
       <BrowserRouter>

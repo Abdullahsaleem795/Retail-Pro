@@ -1,0 +1,191 @@
+{
+  "project": "RetailPro",
+  "description": "Multi-tenant inventory & POS SaaS for Pakistani SME retail shops",
+  "lastUpdated": "2026-07-28",
+  "howToUse": "This is the source of truth for project state. Read this file (and knowledge-graph.md for the narrative view) before re-deriving context from conversation history. UPDATE this file whenever a node's state changes, a decision is made, a bug is fixed, or a new task starts - append/edit, don't wait to batch. Keep nodes atomic and edges directional (from -> to).",
+
+  "nodes": [
+    { "id": "repo",        "type": "repository", "label": "Retail-Pro", "properties": {
+        "url": "https://github.com/Abdullahsaleem795/Retail-Pro",
+        "owner": "Abdullahsaleem795",
+        "branch": "main",
+        "latestCommit": "38680c3",
+        "localPath": "C:\\Users\\Abdullah Saleem\\Desktop\\Retail Pro"
+    }},
+
+    { "id": "backend",     "type": "service", "label": "Backend API", "properties": {
+        "stack": "Node.js, Express",
+        "path": "backend/",
+        "entryPoint": "backend/server.js",
+        "auth": "JWT access (15m) + refresh (7d), bcrypt",
+        "port": 5000
+    }},
+    { "id": "frontend",    "type": "service", "label": "Frontend App", "properties": {
+        "stack": "React 19, Vite, React Router, Context API, Recharts, Framer Motion, react-i18next",
+        "path": "frontend/",
+        "port": 5173,
+        "codeSplitting": "lazy-loaded dashboard routes; POS entry chunk ~9KB"
+    }},
+
+    { "id": "supabase_project", "type": "datastore", "label": "Supabase Postgres project", "properties": {
+        "projectId": "tslqkswcrbihlavccjek",
+        "orgId": "bdjhzineupmwshdztwxo",
+        "region": "ap-northeast-1",
+        "postgresVersion": "17.6",
+        "note": "Project ALSO hosts an unrelated pre-existing app in the public schema (its own users/players/settings tables) - never touch public schema objects. RetailPro is fully isolated."
+    }},
+    { "id": "schema_retailpro", "type": "schema", "label": "retailpro (production schema)", "properties": {
+        "tableCount": 12,
+        "tables": ["shops","users","categories","suppliers","customers","products","purchases","purchase_items","sales","sale_items","expenses","notifications"],
+        "ddlSource": "backend/src/db/schema.sql (canonical, {{SCHEMA}} templated)",
+        "rls": "enabled on every table, zero policies (default-deny; app connects via direct credentialed pg connection, not PostgREST)"
+    }},
+    { "id": "schema_retailpro_test", "type": "schema", "label": "retailpro_test (ephemeral test schema)", "properties": {
+        "lifecycle": "created in tests/globalSetup.js from schema.sql, truncated between tests in tests/setup.js, dropped in tests/globalTeardown.js",
+        "note": "Same Supabase project as production, isolated by schema name only"
+    }},
+    { "id": "mongodb_atlas", "type": "datastore", "label": "MongoDB Atlas (DEPRECATED)", "properties": {
+        "status": "migrated away as of commit 38680c3 - no longer used, code fully removed",
+        "historicalNote": "Original build used this + Mongoose; kept for historical context only"
+    }},
+
+    { "id": "db_access_layer", "type": "module", "label": "pg driver data access", "properties": {
+        "file": "backend/src/config/db.js",
+        "pattern": "raw parameterized SQL, no ORM",
+        "helpers": "query(), withTransaction() - mirrors old Mongoose session.withTransaction()",
+        "connection": "MUST use Supabase pooler host (aws-0-<region>.pooler.supabase.com:5432, session mode) - direct db.<ref>.supabase.co host is IPv6-only, most networks have no outbound IPv6",
+        "numericFix": "registers pg type parser for OID 1700 (NUMERIC) -> parseFloat, otherwise numeric columns return as strings and break frontend arithmetic"
+    }},
+    { "id": "sql_mapper", "type": "module", "label": "sqlMapper.js", "properties": {
+        "file": "backend/src/utils/sqlMapper.js",
+        "purpose": "converts Postgres snake_case rows to camelCase/_id shape the frontend expects (zero frontend changes needed during migration)",
+        "gotcha": "toCamelKey regex must exclude position 0 (/(?!^)_.../ ) or it mangles a literal '_id' key written inside jsonb_build_object() for joined objects into 'Id'"
+    }},
+    { "id": "permissions_module", "type": "module", "label": "Permissions system", "properties": {
+        "file": "backend/src/config/permissions.js",
+        "model": "role defaults (owner > manager > cashier) + additive per-user grants",
+        "rule": "grants are additive-only (never subtractive - owner could lock themselves out)",
+        "escalationGuard": "staff:manage and shop:settings are never grantable, even by owner choice"
+    }},
+
+    { "id": "data_shop",     "type": "entity", "label": "Shop", "properties": { "note": "tenant root; every business table has shop_id" } },
+    { "id": "data_user",     "type": "entity", "label": "User", "properties": { "roles": "owner, manager, cashier" } },
+    { "id": "data_category", "type": "entity", "label": "Category" },
+    { "id": "data_product",  "type": "entity", "label": "Product", "properties": { "units": "pcs, kg, g, litre, ml, dozen, box, packet" } },
+    { "id": "data_supplier", "type": "entity", "label": "Supplier", "properties": { "tracks": "balance (amount shop owes)" } },
+    { "id": "data_customer", "type": "entity", "label": "Customer", "properties": { "tracks": "credit_balance (khata/udhaar owed to shop)" } },
+    { "id": "data_purchase", "type": "entity", "label": "Purchase + purchase_items", "properties": { "statuses": "pending, received, cancelled" } },
+    { "id": "data_sale",     "type": "entity", "label": "Sale + sale_items", "properties": {
+        "statuses": "completed, refunded, voided",
+        "paymentMethods": "cash, card, credit, jazzcash, easypaisa",
+        "idempotency": "client_ref (UUID) + partial unique index (shop_id, client_ref) WHERE client_ref IS NOT NULL"
+    }},
+    { "id": "data_expense",  "type": "entity", "label": "Expense" },
+    { "id": "data_notification", "type": "entity", "label": "Notification", "properties": { "channels": "in_app, whatsapp" } },
+
+    { "id": "feature_pos",       "type": "feature", "label": "POS / Checkout", "properties": {
+        "transactional": "SELECT...FOR UPDATE row locks + Postgres transaction; oversell/rollback verified",
+        "offline": "sales queue to IndexedDB when offline, sync on reconnect/60s interval/manual retry"
+    }},
+    { "id": "feature_barcode",   "type": "feature", "label": "Barcode scanning", "properties": { "modes": "hardware wedge scanner, camera scan (lazy-loaded, needs HTTPS or localhost)" } },
+    { "id": "feature_reports",   "type": "feature", "label": "Reports / AI intelligence", "properties": {
+        "views": "dashboard, sales-trend, profit, best-sellers, dead-stock, fast-moving, low-margin, reorder-suggestions"
+    }},
+    { "id": "feature_whatsapp",  "type": "feature", "label": "WhatsApp automation", "properties": {
+        "provider": "WhatsApp Cloud API (not Twilio - no per-message markup)",
+        "schedule": "low-stock 08:00, daily sales 21:00, weekly profit Sun 21:00 (Asia/Karachi)",
+        "fallback": "logs to console if WHATSAPP_* env vars unset, never breaks the app"
+    }},
+    { "id": "feature_pdf",       "type": "feature", "label": "PDF receipts", "properties": { "file": "backend/src/services/pdfService.js", "lib": "pdfkit" } },
+    { "id": "feature_i18n",      "type": "feature", "label": "English/Urdu i18n", "properties": { "rtl": "full layout mirror for Urdu, numbers stay LTR" } },
+    { "id": "feature_pwa",       "type": "feature", "label": "PWA", "properties": { "icons": "generated via frontend/scripts/generateIcons.js" } },
+
+    { "id": "deploy_render",  "type": "deployment_target", "label": "Render (backend)", "properties": {
+        "status": "NOT YET DEPLOYED - user must do this manually, no Render API access available",
+        "config": "backend/render.yaml",
+        "requiredEnvVars": "DATABASE_URL (Supabase pooler string), JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, CLIENT_URL, NODE_ENV=production",
+        "blocksVercel": true
+    }},
+    { "id": "deploy_vercel",  "type": "deployment_target", "label": "Vercel (frontend)", "properties": {
+        "status": "NOT YET DEPLOYED - blocked on deploy_render being live first (needs backend URL for VITE_API_URL)",
+        "config": "frontend/vercel.json"
+    }},
+
+    { "id": "demo_account_owner",   "type": "credential", "label": "Demo owner login", "properties": { "email": "demo@retailpro.pk", "password": "demo1234", "shop": "Al-Madina Kiryana Store" } },
+    { "id": "demo_account_cashier", "type": "credential", "label": "Demo cashier login", "properties": { "email": "cashier@retailpro.pk", "password": "demo1234" } },
+    { "id": "secrets_location", "type": "credential_location", "label": "backend/.env (gitignored)", "properties": {
+        "contains": "DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN",
+        "note": "Supabase DB password was pasted in chat during setup - worth rotating before real production use"
+    }},
+
+    { "id": "design_brief", "type": "doc", "label": "Material 3 design brief", "properties": { "file": "docs/design-brief.md", "scope": "all 17 screens, light theme, M3, seed #1B7F4B" } },
+    { "id": "test_suite", "type": "module", "label": "Backend integration tests", "properties": {
+        "framework": "Jest + supertest",
+        "count": 48,
+        "files": "tests/{auth,tenancy,permissions,sales}.test.js",
+        "runtime": "~4-5 min against live Supabase (network round-trip bound, not stuck - verify via pg_stat_activity if a run seems slow)"
+    }}
+  ],
+
+  "edges": [
+    { "from": "repo", "to": "backend", "relation": "contains" },
+    { "from": "repo", "to": "frontend", "relation": "contains" },
+    { "from": "repo", "to": "design_brief", "relation": "contains" },
+
+    { "from": "backend", "to": "db_access_layer", "relation": "uses" },
+    { "from": "db_access_layer", "to": "sql_mapper", "relation": "uses" },
+    { "from": "db_access_layer", "to": "schema_retailpro", "relation": "connects_to (production)" },
+    { "from": "db_access_layer", "to": "schema_retailpro_test", "relation": "connects_to (DB_SCHEMA=retailpro_test env override, tests only)" },
+    { "from": "schema_retailpro", "to": "supabase_project", "relation": "lives_in" },
+    { "from": "schema_retailpro_test", "to": "supabase_project", "relation": "lives_in (ephemeral)" },
+    { "from": "test_suite", "to": "schema_retailpro_test", "relation": "exercises" },
+
+    { "from": "backend", "to": "mongodb_atlas", "relation": "FORMERLY used, now removed (see commit 38680c3)" },
+
+    { "from": "frontend", "to": "backend", "relation": "calls (REST API, axios) - unchanged across the Mongo->Postgres migration" },
+
+    { "from": "backend", "to": "permissions_module", "relation": "uses" },
+    { "from": "data_user", "to": "permissions_module", "relation": "governed_by" },
+
+    { "from": "data_user",     "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "data_category", "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "data_product",  "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "data_product",  "to": "data_category", "relation": "references (category_id, nullable, ON DELETE SET NULL)" },
+    { "from": "data_product",  "to": "data_supplier", "relation": "references (supplier_id, nullable, ON DELETE SET NULL)" },
+    { "from": "data_supplier", "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "data_customer", "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "data_purchase", "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "data_purchase", "to": "data_supplier", "relation": "references (supplier_id, NOT NULL, DEFERRABLE)" },
+    { "from": "data_purchase", "to": "data_product", "relation": "line items reference (purchase_items.product_id, DEFERRABLE)" },
+    { "from": "data_sale",     "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "data_sale",     "to": "data_customer", "relation": "references (customer_id, nullable, ON DELETE SET NULL)" },
+    { "from": "data_sale",     "to": "data_user", "relation": "references (cashier_id, NOT NULL, DEFERRABLE)" },
+    { "from": "data_sale",     "to": "data_product", "relation": "line items reference (sale_items.product_id, DEFERRABLE)" },
+    { "from": "data_expense",  "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "data_notification", "to": "data_shop", "relation": "belongs_to (shop_id)" },
+
+    { "from": "feature_pos", "to": "data_sale", "relation": "creates" },
+    { "from": "feature_pos", "to": "data_product", "relation": "decrements stock_quantity (row-locked, transactional)" },
+    { "from": "feature_barcode", "to": "feature_pos", "relation": "feeds_into (add-to-cart)" },
+    { "from": "feature_reports", "to": "data_sale", "relation": "aggregates" },
+    { "from": "feature_reports", "to": "data_expense", "relation": "aggregates" },
+    { "from": "feature_whatsapp", "to": "data_notification", "relation": "creates delivery records for" },
+    { "from": "feature_pdf", "to": "data_sale", "relation": "renders receipts for" },
+
+    { "from": "backend", "to": "deploy_render", "relation": "target_deployment (PENDING)" },
+    { "from": "frontend", "to": "deploy_vercel", "relation": "target_deployment (PENDING, blocked_by deploy_render)" },
+
+    { "from": "secrets_location", "to": "db_access_layer", "relation": "configures (DATABASE_URL)" }
+  ],
+
+  "decisionLog": [
+    { "date": "2026-07-27", "decision": "Full backend migration MongoDB->Supabase Postgres per explicit user instruction ('shift backend A to Z to supabase, that's my final decision')", "scope": "Kept Express, JWT auth, and permission system unchanged - only the data layer moved. Zero frontend changes required." },
+    { "date": "2026-07-27", "decision": "Used raw pg driver + parameterized SQL instead of Supabase JS client or an ORM (Prisma/Knex)", "why": "Supabase JS client goes through PostgREST, which only exposes the public schema by default (would need a Dashboard setting change I have no API access to). Raw pg avoids that limitation entirely and keeps transaction logic in JS, close to the original Mongoose session pattern." },
+    { "date": "2026-07-27", "decision": "Created a dedicated 'retailpro' schema instead of using 'public'", "why": "This Supabase project already hosts an unrelated app with its own public.users table - collision risk. Checked via list_tables before writing any DDL." },
+    { "date": "2026-07-27", "decision": "Must use Supabase pooler host (aws-0-<region>.pooler.supabase.com), never the direct db.<ref>.supabase.co host", "why": "Direct host is IPv6-only; most sandboxes/hosts have no outbound IPv6 route, connection times out with ENOTFOUND/ENODATA." },
+    { "date": "2026-07-27", "decision": "FK constraints on *.product_id, purchases.supplier_id, sales.cashier_id are DEFERRABLE INITIALLY DEFERRED", "why": "A full shop cascade-delete hits two independent FK paths (e.g. shops->products directly AND shops->sales->sale_items) with no ordering guarantee; RESTRICT (correct default) would block deletion of a row a not-yet-cascaded child still references. Deferring the check to commit time fixes this without weakening protection for an ordinary standalone delete." },
+    { "date": "2026-07-27", "decision": "Registered a global pg type parser for NUMERIC (OID 1700) -> parseFloat", "why": "node-postgres returns NUMERIC as strings by default to avoid precision loss; every price/quantity field here is numeric(14,x) and the frontend does real arithmetic on these fields. Caught by 12 failing tests." },
+    { "date": "2026-07-27", "decision": "Tests use a real isolated Postgres schema (retailpro_test) on the same Supabase project, not mocks or a different engine", "why": "Same reasoning as the original mongodb-memory-server choice - want the test suite to exercise the actual database engine, transactions, and constraints." },
+    { "date": "2026-07-27", "decision": "Vercel deployment is blocked on Render backend deployment", "why": "Vercel only hosts the frontend; deploying it alone gives a URL with no working API behind it. User must complete the Render dashboard steps manually since there's no Render API access." }
+  ]
+}

@@ -103,6 +103,110 @@ export default function Settings() {
             </span>
           </div>
 
+          {/* Plan Comparison & Benefits Cards */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h3 style={{ margin: '0 0 0.85rem', fontSize: '0.95rem', color: '#1e293b' }}>⭐ Select a Plan & Discover Exclusive Benefits</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
+              {/* Basic Plan Card */}
+              <div
+                style={{
+                  background: '#fff',
+                  border: planRequested === 'basic' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  padding: '1.1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: planRequested === 'basic' ? '0 4px 12px rgba(59,130,246,0.15)' : 'none',
+                }}
+                onClick={() => setPlanRequested('basic')}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>Basic Plan</h4>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#2563eb' }}>Rs 1,500 / mo</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0.4rem 0 0.75rem' }}>Perfect for single-counter stores getting started.</p>
+                <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#334155', lineHeight: '1.6' }}>
+                  <li>⚡ 1 POS Terminal & Checkout Counter</li>
+                  <li>📦 Up to 500 Inventory Items</li>
+                  <li>👥 Up to 2 Staff Accounts (Cashiers)</li>
+                  <li>📊 Daily Sales & Expense Tracking</li>
+                  <li>🧾 Thermal Receipt Printing</li>
+                </ul>
+              </div>
+
+              {/* Pro Plan Card (Recommended) */}
+              <div
+                style={{
+                  background: '#f0fdf4',
+                  border: planRequested === 'pro' ? '2px solid #16a34a' : '1px solid #bbf7d0',
+                  borderRadius: 10,
+                  padding: '1.1rem',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  transition: 'all 0.2s',
+                  boxShadow: planRequested === 'pro' ? '0 4px 14px rgba(22,163,74,0.2)' : 'none',
+                }}
+                onClick={() => setPlanRequested('pro')}
+              >
+                <span
+                  style={{
+                    position: 'absolute',
+                    top: -10,
+                    right: 12,
+                    background: '#16a34a',
+                    color: '#fff',
+                    fontSize: '0.7rem',
+                    fontWeight: 'bold',
+                    padding: '2px 8px',
+                    borderRadius: 12,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  🌟 Recommended
+                </span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, fontSize: '1rem', color: '#14532d' }}>Pro Plan</h4>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#16a34a' }}>Rs 3,500 / mo</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#15803d', margin: '0.4rem 0 0.75rem' }}>Full automation & growth for busy retail stores.</p>
+                <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#166534', lineHeight: '1.6' }}>
+                  <li>✨ <strong>Everything in Basic, PLUS:</strong></li>
+                  <li>💬 <strong>Automated 1-Click WhatsApp Supplier Orders & Low Stock Alerts</strong></li>
+                  <li>👥 <strong>Unlimited Staff Accounts (Managers & Cashiers)</strong></li>
+                  <li>📈 <strong>Advanced BI Analytics (Dead Stock & Margin Warnings)</strong></li>
+                  <li>📲 <strong>1-Click WhatsApp Customer Debt Reminders</strong></li>
+                </ul>
+              </div>
+
+              {/* Enterprise Plan Card */}
+              <div
+                style={{
+                  background: '#fff',
+                  border: planRequested === 'enterprise' ? '2px solid #8b5cf6' : '1px solid #e2e8f0',
+                  borderRadius: 10,
+                  padding: '1.1rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: planRequested === 'enterprise' ? '0 4px 12px rgba(139,92,246,0.15)' : 'none',
+                }}
+                onClick={() => setPlanRequested('enterprise')}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>Enterprise Plan</h4>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#7c3aed' }}>Rs 7,500 / mo</span>
+                </div>
+                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0.4rem 0 0.75rem' }}>For multi-branch chains & high-volume marts.</p>
+                <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#334155', lineHeight: '1.6' }}>
+                  <li>✨ <strong>Everything in Pro, PLUS:</strong></li>
+                  <li>🏢 <strong>Multi-Branch & Multi-Counter Sync</strong></li>
+                  <li>⚡ <strong>Dedicated Priority Phone & WhatsApp Support</strong></li>
+                  <li>🔄 <strong>Custom ERP & Accounting System Integration</strong></li>
+                  <li>💾 <strong>Automated Hourly Offsite Database Backups</strong></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
           <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: 8, marginBottom: '1.25rem', border: '1px solid #e2e8f0' }}>
             <h3 style={{ margin: '0 0 0.5rem', fontSize: '0.95rem', color: '#1e293b' }}>💳 How to Pay & Upgrade (Pakistan Local Payment Accounts)</h3>
             <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#64748b' }}>

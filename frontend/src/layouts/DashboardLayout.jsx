@@ -10,16 +10,16 @@ import './DashboardLayout.css';
 // hidden unless the user's effective permissions include it, so a cashier
 // isn't shown links that would only 403 on them.
 const NAV_ITEMS = [
-  { to: '/dashboard', key: 'dashboard', end: true, permission: null, prefetch: () => import('../pages/dashboard/DashboardHome') },
-  { to: '/dashboard/pos', key: 'pos', permission: null, prefetch: () => import('../pages/dashboard/POS') },
-  { to: '/dashboard/inventory', key: 'inventory', permission: null, prefetch: () => import('../pages/dashboard/Inventory') },
-  { to: '/dashboard/categories', key: 'categories', permission: null, prefetch: () => import('../pages/dashboard/Categories') },
-  { to: '/dashboard/sales', key: 'sales', permission: null, prefetch: () => import('../pages/dashboard/Sales') },
-  { to: '/dashboard/purchases', key: 'purchases', permission: 'purchase:manage', prefetch: () => import('../pages/dashboard/Purchases') },
-  { to: '/dashboard/suppliers', key: 'suppliers', permission: 'supplier:manage', prefetch: () => import('../pages/dashboard/Suppliers') },
-  { to: '/dashboard/customers', key: 'customers', permission: null, prefetch: () => import('../pages/dashboard/Customers') },
-  { to: '/dashboard/expenses', key: 'expenses', permission: 'expense:manage', prefetch: () => import('../pages/dashboard/Expenses') },
-  { to: '/dashboard/reports', key: 'reports', permission: 'report:view', prefetch: () => import('../pages/dashboard/Reports') },
+  { to: '/dashboard', key: 'dashboard', end: true, permission: null, prefetch: () => import('../pages/dashboard/DashboardHome'), api: '/api/reports/dashboard-overview' },
+  { to: '/dashboard/pos', key: 'pos', permission: null, prefetch: () => import('../pages/dashboard/POS'), api: '/api/products?limit=50' },
+  { to: '/dashboard/inventory', key: 'inventory', permission: null, prefetch: () => import('../pages/dashboard/Inventory'), api: '/api/products?limit=50' },
+  { to: '/dashboard/categories', key: 'categories', permission: null, prefetch: () => import('../pages/dashboard/Categories'), api: '/api/categories' },
+  { to: '/dashboard/sales', key: 'sales', permission: null, prefetch: () => import('../pages/dashboard/Sales'), api: '/api/sales?limit=50' },
+  { to: '/dashboard/purchases', key: 'purchases', permission: 'purchase:manage', prefetch: () => import('../pages/dashboard/Purchases'), api: '/api/purchases?limit=50' },
+  { to: '/dashboard/suppliers', key: 'suppliers', permission: 'supplier:manage', prefetch: () => import('../pages/dashboard/Suppliers'), api: '/api/suppliers' },
+  { to: '/dashboard/customers', key: 'customers', permission: null, prefetch: () => import('../pages/dashboard/Customers'), api: '/api/customers' },
+  { to: '/dashboard/expenses', key: 'expenses', permission: 'expense:manage', prefetch: () => import('../pages/dashboard/Expenses'), api: '/api/expenses?limit=50' },
+  { to: '/dashboard/reports', key: 'reports', permission: 'report:view', prefetch: () => import('../pages/dashboard/Reports'), api: '/api/reports/dashboard-overview' },
   { to: '/dashboard/staff', key: 'staff', permission: 'staff:manage', prefetch: () => import('../pages/dashboard/Staff') },
   { to: '/dashboard/settings', key: 'settings', permission: 'shop:settings', prefetch: () => import('../pages/dashboard/Settings') },
 ];
@@ -42,7 +42,27 @@ export default function DashboardLayout() {
     }
   }, [location.pathname, t]);
 
+  // Idle prefetching for ultra-fast instantaneous navigation
+  useEffect(() => {
+    const prefetchIdle = () => {
+      NAV_ITEMS.slice(0, 5).forEach((item) => {
+        if (item.prefetch) item.prefetch();
+      });
+    };
+    if ('requestIdleCallback' in window) {
+      const id = window.requestIdleCallback(prefetchIdle, { timeout: 2000 });
+      return () => window.cancelIdleCallback(id);
+    } else {
+      const timer = setTimeout(prefetchIdle, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
   const visibleItems = NAV_ITEMS.filter((item) => !item.permission || can(item.permission));
+
+  const handleHover = (item) => {
+    if (item.prefetch) item.prefetch();
+  };
 
   return (
     <div className="dash-shell">
@@ -55,7 +75,7 @@ export default function DashboardLayout() {
               to={item.to}
               end={item.end}
               className="dash-nav-link"
-              onMouseEnter={() => item.prefetch && item.prefetch()}
+              onMouseEnter={() => handleHover(item)}
             >
               {t(`nav.${item.key}`)}
             </NavLink>

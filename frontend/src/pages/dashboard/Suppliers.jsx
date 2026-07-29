@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { listSuppliers, createSupplier, updateSupplier, deleteSupplier } from '../../api/suppliers';
+import { sendSupplierOrderDraft } from '../../api/notifications';
 import SimpleFormModal from '../../components/SimpleFormModal';
 import ConfirmModal from '../../components/ConfirmModal';
 import './Inventory.css';
@@ -67,6 +68,20 @@ export default function Suppliers() {
     }
   };
 
+  const handleWhatsAppOrder = async (supplier) => {
+    try {
+      const res = await sendSupplierOrderDraft(supplier._id);
+      if (res.whatsappUrl) {
+        window.open(res.whatsappUrl, '_blank');
+        toast.success('Opened WhatsApp draft');
+      } else {
+        toast.success('Order draft generated');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'No low stock items for this supplier');
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
@@ -117,6 +132,9 @@ export default function Suppliers() {
                     </span>
                   </td>
                   <td className="table-actions">
+                    <button className="btn-link" onClick={() => handleWhatsAppOrder(s)} style={{ color: '#22c55e', fontWeight: 600 }}>
+                      💬 Order
+                    </button>
                     <button
                       className="btn-link"
                       onClick={() => {

@@ -5,6 +5,7 @@ const {
   sendTextMessage,
   buildLowStockMessage,
   buildSupplierOrderDraft,
+  buildWhatsAppUrl,
 } = require('../services/whatsappService');
 
 const getNotifications = asyncHandler(async (req, res) => {
@@ -76,7 +77,9 @@ const sendLowStockAlert = asyncHandler(async (req, res) => {
     [req.shopId, `${lowStockProducts.length} items low on stock`, message, deliveryStatus]
   );
 
-  res.status(201).json({ success: true, deliveryStatus, data: mapRow(rows[0]) });
+  const whatsappUrl = buildWhatsAppUrl(target, message);
+
+  res.status(201).json({ success: true, deliveryStatus, whatsappUrl, data: mapRow(rows[0]) });
 });
 
 // POST /api/notifications/supplier-order/:supplierId
@@ -115,6 +118,7 @@ const sendSupplierOrderDraft = asyncHandler(async (req, res) => {
   }));
 
   const message = buildSupplierOrderDraft(shop.name, supplier.name, orderItems);
+  const whatsappUrl = buildWhatsAppUrl(supplier.phone, message);
 
   let deliveryStatus = 'sent';
   try {
@@ -125,7 +129,7 @@ const sendSupplierOrderDraft = asyncHandler(async (req, res) => {
     console.error(`[whatsapp] supplier order failed for shop ${req.shopId}: ${err.message}`);
   }
 
-  res.json({ success: true, deliveryStatus, message, items: orderItems });
+  res.json({ success: true, deliveryStatus, message, whatsappUrl, items: orderItems });
 });
 
 module.exports = { getNotifications, markAsRead, markAllAsRead, sendLowStockAlert, sendSupplierOrderDraft };

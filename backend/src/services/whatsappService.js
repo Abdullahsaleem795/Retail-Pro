@@ -71,6 +71,12 @@ const buildSupplierOrderDraft = (shopName, supplierName, items) => {
   return `Assalam-o-Alaikum ${supplierName},\n\nThis is *${shopName}*. We would like to order:\n\n${lines}\n\nPlease confirm availability and total. JazakAllah.`;
 };
 
+const buildWhatsAppUrl = (phone, text) => {
+  const cleanPhone = (phone || '').replace(/\D/g, '');
+  const encodedText = encodeURIComponent(text);
+  return cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodedText}` : `https://wa.me/?text=${encodedText}`;
+};
+
 module.exports = {
   isConfigured,
   sendTextMessage,
@@ -78,4 +84,5 @@ module.exports = {
   buildDailySalesMessage,
   buildWeeklyProfitMessage,
   buildSupplierOrderDraft,
+  buildWhatsAppUrl,
 };

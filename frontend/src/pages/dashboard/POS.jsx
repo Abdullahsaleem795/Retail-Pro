@@ -20,7 +20,7 @@ const PAYMENT_METHODS = ['cash', 'card', 'credit', 'jazzcash', 'easypaisa'];
 
 export default function POS() {
   const [search, setSearch] = useState('');
-  const [products, setProducts] = useState([]);
+  const [allProducts, setAllProducts] = useState([]);
   const [cart, setCart] = useState([]); // { productId, name, unitPrice, quantity, stockQuantity }
   const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState('');
@@ -34,17 +34,25 @@ export default function POS() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await listProducts({ search: search || undefined, limit: 30 });
-      setProducts(res.data);
+      const res = await listProducts({ limit: 500 });
+      setAllProducts(res.data || []);
     } catch {
       toast.error('Failed to load products');
     }
-  }, [search]);
+  }, []);
 
   useEffect(() => {
-    const timer = setTimeout(fetchProducts, 250);
-    return () => clearTimeout(timer);
+    fetchProducts();
   }, [fetchProducts]);
+
+  // Instant client-side filtering at 120 FPS
+  const filteredProducts = useMemo(() => {
+    if (!search.trim()) return allProducts.slice(0, 30);
+    const q = search.toLowerCase().trim();
+    return allProducts
+      .filter((p) => (p.name || '').toLowerCase().includes(q) || (p.barcode || '').includes(q) || (p.sku || '').toLowerCase().includes(q))
+      .slice(0, 30);
+  }, [allProducts, search]);
 
   useEffect(() => {
     listCustomers().then((res) => setCustomers(res.data)).catch(() => {});
@@ -105,20 +113,22 @@ export default function POS() {
   }, [syncPendingSales]);
 
   const addToCart = (product) => {
+    if (!product || product.stockQuantity <= 0) {
+      toast.error('Item is out of stock');
+      return;
+    }
+
     setCart((prev) => {
-      const existing = prev.find((item) => item.productId === product._id);
-      if (existing) {
-        if (existing.quantity >= product.stockQuantity) {
+      const existingIndex = prev.findIndex((item) => item.productId === product._id);
+      if (existingIndex > -1) {
+        const current = prev[existingIndex];
+        if (current.quantity >= product.stockQuantity) {
           toast.error(`Only ${product.stockQuantity} in stock`);
           return prev;
         }
-        return prev.map((item) =>
-          item.productId === product._id ? { ...item, quantity: item.quantity + 1 } : item
-        );
-      }
-      if (product.stockQuantity <= 0) {
-        toast.error('Out of stock');
-        return prev;
+        const updated = [...prev];
+        updated[existingIndex] = { ...current, quantity: current.quantity + 1 };
+        return updated;
       }
       return [
         ...prev,
@@ -135,17 +145,34 @@ export default function POS() {
 
   const handleBarcodeEnter = async (e) => {
     if (e.key !== 'Enter' || !search.trim()) return;
+    const term = search.trim();
+    // 1. Try local memory first (0ms latency!)
+    const localMatch = allProducts.find((p) => p.barcode === term || p.sku === term);
+    if (localMatch) {
+      addToCart(localMatch);
+      setSearch('');
+      return;
+    }
+    // 2. Server fallback if not in initial 500 items
     try {
-      const res = await getProductByBarcode(search.trim());
+      const res = await getProductByBarcode(term);
       addToCart(res.data);
       setSearch('');
     } catch {
-      toast.error(`No product matches barcode "${search.trim()}"`);
+      toast.error(`No product matches barcode "${term}"`);
     }
   };
 
   const handleScanned = useCallback(async (barcode) => {
     setScannerOpen(false);
+    // 1. Try local memory first (0ms latency!)
+    const localMatch = allProducts.find((p) => p.barcode === barcode || p.sku === barcode);
+    if (localMatch) {
+      addToCart(localMatch);
+      toast.success(`Added ${localMatch.name}`);
+      return;
+    }
+    // 2. Server fallback
     try {
       const res = await getProductByBarcode(barcode);
       addToCart(res.data);
@@ -153,7 +180,7 @@ export default function POS() {
     } catch {
       toast.error(`No product found for barcode ${barcode}`);
     }
-  }, []);
+  }, [allProducts]);
 
   const updateQuantity = (productId, delta) => {
     setCart((prev) =>
@@ -253,7 +280,7 @@ export default function POS() {
           </button>
         </div>
         <div className="pos-product-grid">
-          {products.map((p) => (
+          {filteredProducts.map((p) => (
             <button
               key={p._id}
               className="pos-product-card"

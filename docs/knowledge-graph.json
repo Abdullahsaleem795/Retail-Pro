@@ -1,7 +1,7 @@
 {
   "project": "RetailPro",
   "description": "Multi-tenant inventory & POS SaaS for Pakistani SME retail shops",
-  "lastUpdated": "2026-07-28 (Vercel deployment approach note added)",
+  "lastUpdated": "2026-07-28 (backend pivoted to Vercel Serverless by user directly; ConfirmModal UX pattern added)",
   "howToUse": "This is the source of truth for project state. Read this file (and knowledge-graph.md for the narrative view) before re-deriving context from conversation history. UPDATE this file whenever a node's state changes, a decision is made, a bug is fixed, or a new task starts - append/edit, don't wait to batch. Keep nodes atomic and edges directional (from -> to).",
 
   "nodes": [
@@ -9,7 +9,7 @@
         "url": "https://github.com/Abdullahsaleem795/Retail-Pro",
         "owner": "Abdullahsaleem795",
         "branch": "main",
-        "latestCommit": "38680c3",
+        "latestCommit": "2629126",
         "localPath": "C:\\Users\\Abdullah Saleem\\Desktop\\Retail Pro"
     }},
 
@@ -100,16 +100,22 @@
     { "id": "feature_i18n",      "type": "feature", "label": "English/Urdu i18n", "properties": { "rtl": "full layout mirror for Urdu, numbers stay LTR" } },
     { "id": "feature_pwa",       "type": "feature", "label": "PWA", "properties": { "icons": "generated via frontend/scripts/generateIcons.js" } },
 
-    { "id": "deploy_render",  "type": "deployment_target", "label": "Render (backend)", "properties": {
-        "status": "NOT YET DEPLOYED - user must do this manually, no Render API access available",
+    { "id": "deploy_render",  "type": "deployment_target", "label": "Render (backend) - SUPERSEDED", "properties": {
+        "status": "SUPERSEDED as of commit e837f35 - user pivoted the backend deployment target to Vercel Serverless instead. render.yaml still exists and is still valid if the user ever reverts, but it is no longer the active plan.",
         "config": "backend/render.yaml",
-        "requiredEnvVars": "DATABASE_URL (Supabase pooler string), JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, CLIENT_URL, NODE_ENV=production",
-        "blocksVercel": true
+        "requiredEnvVars": "DATABASE_URL (Supabase pooler string), JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, CLIENT_URL, NODE_ENV=production"
     }},
-    { "id": "deploy_vercel",  "type": "deployment_target", "label": "Vercel (frontend)", "properties": {
-        "status": "NOT YET DEPLOYED - blocked on deploy_render being live first (needs backend URL for VITE_API_URL)",
+    { "id": "deploy_vercel_backend", "type": "deployment_target", "label": "Vercel Serverless (backend) - ACTIVE PLAN", "properties": {
+        "status": "NOT YET DEPLOYED, but configured (commit e837f35, made by the user directly, not by an agent)",
+        "config": "backend/vercel.json (rewrites /api/* -> /api/index.js), backend/api/index.js (exports the Express app, no app.listen())",
+        "likelySetup": "A SEPARATE Vercel project from the frontend one, root directory 'backend' - backend/vercel.json is self-contained with its own rewrites. Not yet confirmed by an actual deployment.",
+        "criticalCaveat": "backend/api/index.js exports `app` directly and never calls server.js's connectDB()/startScheduler(). node-cron (WhatsApp low-stock/daily/weekly reports, feature_whatsapp) needs a long-running process and WILL NOT FIRE under Vercel serverless - each invocation is ephemeral. If WhatsApp automation matters under this deployment, it needs to move to Vercel Cron Jobs (a separate, real Vercel feature) calling dedicated HTTP endpoints, or a small always-on worker elsewhere. This has not been raised with the user yet - flagged here for visibility, not silently fixed.",
+        "poolSizingCaveat": "config/db.js's pg.Pool still uses max:10, sized for a long-running server. Under serverless, each cold-start container gets its OWN pool, so concurrent invocations could multiply toward Supabase's pooler connection cap faster than on a single Render instance. Worth revisiting (commonly max:1 + Supabase's transaction-mode pooler on 6543 for serverless) before real load - not yet changed."
+    }},
+    { "id": "deploy_vercel_frontend",  "type": "deployment_target", "label": "Vercel (frontend)", "properties": {
+        "status": "NOT YET DEPLOYED",
         "config": "frontend/vercel.json",
-        "vercelAccount": "team_9pc2EPB8Uci61AOwmUmoPxTt (abdullahsaleem795's projects) - no existing 'retailpro' project there yet",
+        "vercelAccount": "team_9pc2EPB8Uci61AOwmUmoPxTt (abdullahsaleem795's projects) - no existing 'retailpro' project there yet as of last check",
         "deploymentMethod": "Vercel dashboard 'Import Git Repository' (connect to Abdullahsaleem795/Retail-Pro, root directory 'frontend'), NOT the deploy_to_vercel MCP tool - see decisionLog"
     }},
 
@@ -120,7 +126,19 @@
         "note": "Supabase DB password was pasted in chat during setup - worth rotating before real production use"
     }},
 
+    { "id": "confirm_modal", "type": "module", "label": "ConfirmModal component", "properties": {
+        "file": "frontend/src/components/ConfirmModal.jsx",
+        "addedBy": "user directly, commit ce57f35",
+        "purpose": "Replaces native window.confirm() across all dashboard pages (Categories, Staff, Expenses, Customers, Suppliers, Inventory) with a styled, on-brand confirmation dialog",
+        "pattern": "props: title, message, confirmText, confirmVariant ('danger' by default), onConfirm (async), onClose"
+    }},
+
     { "id": "design_brief", "type": "doc", "label": "Material 3 design brief", "properties": { "file": "docs/design-brief.md", "scope": "all 17 screens, light theme, M3, seed #1B7F4B" } },
+    { "id": "project_overview_doc", "type": "doc", "label": "Project Overview & Monetization Guide", "properties": {
+        "file": "PROJECT_OVERVIEW.md",
+        "addedBy": "user directly, present at repo root as of this graph update",
+        "audience": "business/pitch doc - architecture summary, feature list, and SaaS monetization models (subscription tiers, freemium, add-ons, hardware bundles), distinct from README.md (dev setup) and this knowledge graph (agent context)"
+    }},
     { "id": "test_suite", "type": "module", "label": "Backend integration tests", "properties": {
         "framework": "Jest + supertest",
         "count": 48,
@@ -174,10 +192,18 @@
     { "from": "feature_whatsapp", "to": "data_notification", "relation": "creates delivery records for" },
     { "from": "feature_pdf", "to": "data_sale", "relation": "renders receipts for" },
 
-    { "from": "backend", "to": "deploy_render", "relation": "target_deployment (PENDING)" },
-    { "from": "frontend", "to": "deploy_vercel", "relation": "target_deployment (PENDING, blocked_by deploy_render)" },
+    { "from": "backend", "to": "deploy_render", "relation": "target_deployment (SUPERSEDED)" },
+    { "from": "backend", "to": "deploy_vercel_backend", "relation": "target_deployment (ACTIVE PLAN, PENDING)" },
+    { "from": "frontend", "to": "deploy_vercel_frontend", "relation": "target_deployment (PENDING)" },
+    { "from": "deploy_vercel_backend", "to": "feature_whatsapp", "relation": "BREAKS - node-cron scheduler cannot run on serverless, see criticalCaveat" },
 
-    { "from": "secrets_location", "to": "db_access_layer", "relation": "configures (DATABASE_URL)" }
+    { "from": "secrets_location", "to": "db_access_layer", "relation": "configures (DATABASE_URL)" },
+    { "from": "confirm_modal", "to": "data_category", "relation": "confirms delete for" },
+    { "from": "confirm_modal", "to": "data_product", "relation": "confirms delete for" },
+    { "from": "confirm_modal", "to": "data_supplier", "relation": "confirms delete for" },
+    { "from": "confirm_modal", "to": "data_customer", "relation": "confirms delete for" },
+    { "from": "confirm_modal", "to": "data_expense", "relation": "confirms delete for" },
+    { "from": "confirm_modal", "to": "data_user", "relation": "confirms remove-staff for" }
   ],
 
   "decisionLog": [
@@ -189,6 +215,8 @@
     { "date": "2026-07-27", "decision": "Registered a global pg type parser for NUMERIC (OID 1700) -> parseFloat", "why": "node-postgres returns NUMERIC as strings by default to avoid precision loss; every price/quantity field here is numeric(14,x) and the frontend does real arithmetic on these fields. Caught by 12 failing tests." },
     { "date": "2026-07-27", "decision": "Tests use a real isolated Postgres schema (retailpro_test) on the same Supabase project, not mocks or a different engine", "why": "Same reasoning as the original mongodb-memory-server choice - want the test suite to exercise the actual database engine, transactions, and constraints." },
     { "date": "2026-07-27", "decision": "Vercel deployment is blocked on Render backend deployment", "why": "Vercel only hosts the frontend; deploying it alone gives a URL with no working API behind it. User must complete the Render dashboard steps manually since there's no Render API access." },
-    { "date": "2026-07-28", "decision": "Ruled out the deploy_to_vercel MCP tool (direct file upload, no git) for this project; use Vercel's dashboard Git import instead", "why": "That tool requires every source file embedded literally in the tool call. The frontend is 62 files / ~200KB even after excluding package-lock.json; a test read of the assembled payload alone hit ~113K tokens and got truncated by the Read tool's cap, confirming this path is impractical for a project this size (the tool's own description says it's meant for a small app just generated, not an existing multi-file repo). Git import is also strictly better long-term: auto-deploys on every future push, same pattern as Render." }
+    { "date": "2026-07-28", "decision": "Ruled out the deploy_to_vercel MCP tool (direct file upload, no git) for this project; use Vercel's dashboard Git import instead", "why": "That tool requires every source file embedded literally in the tool call. The frontend is 62 files / ~200KB even after excluding package-lock.json; a test read of the assembled payload alone hit ~113K tokens and got truncated by the Read tool's cap, confirming this path is impractical for a project this size (the tool's own description says it's meant for a small app just generated, not an existing multi-file repo). Git import is also strictly better long-term: auto-deploys on every future push, same pattern as Render." },
+    { "date": "2026-07-28", "decision": "User pivoted backend deployment target from Render to Vercel Serverless, made directly (commit e837f35, not through an agent in this session)", "why": "Not stated in the commit; likely to keep both frontend and backend on one platform. Consequence flagged, not yet resolved: node-cron's WhatsApp scheduler (feature_whatsapp) has no persistent process to run on under serverless and will not fire. The pg.Pool's max:10 sizing is also tuned for a long-running server, not serverless cold starts. Both are open items - see deploy_vercel_backend node." },
+    { "date": "2026-07-28", "decision": "User replaced native window.confirm() with a custom ConfirmModal component across all dashboard delete/remove actions (commit ce57f35)", "why": "window.confirm() is a jarring, unstyled native browser dialog that breaks the app's visual consistency; ConfirmModal matches the existing modal-overlay/modal-card pattern already used elsewhere (ProductFormModal, SimpleFormModal, StaffFormModal)." }
   ]
 }

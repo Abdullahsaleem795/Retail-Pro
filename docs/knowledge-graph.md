@@ -5,8 +5,9 @@ project context from conversation history.** Update both whenever something chan
 deployment status flip, a bug fix, a new module. Don't let this go stale; a wrong graph is worse than
 no graph.
 
-_Last updated: 2026-07-28 — after ruling out `deploy_to_vercel` (direct-upload MCP tool) for this
-project's size; Vercel deployment goes through the dashboard Git-import flow instead._
+_Last updated: 2026-07-28 — backend deployment target pivoted from Render to Vercel Serverless
+(user's own change, commit `e837f35`), plus a `ConfirmModal` UX pattern replacing native
+`window.confirm()` across the dashboard (commit `ce57f35`)._
 
 ---
 
@@ -30,8 +31,9 @@ graph TD
     end
 
     subgraph Deploy
-        render[Render<br/>❌ NOT deployed]
-        vercel[Vercel<br/>❌ NOT deployed, blocked on Render]
+        render[Render backend<br/>⚪ SUPERSEDED, not deployed]
+        vbackend[Vercel Serverless backend<br/>❌ ACTIVE PLAN, not deployed]
+        vfrontend[Vercel frontend<br/>❌ NOT deployed]
     end
 
     repo --> frontend
@@ -42,13 +44,16 @@ graph TD
     pg -->|production| schema
     pg -->|DB_SCHEMA=retailpro_test| testschema
     backend -.->|formerly, now removed| mongo
-    backend -->|target| render
-    frontend -->|target| vercel
-    render -.blocks.-> vercel
+    backend -.->|superseded plan| render
+    backend -->|active plan| vbackend
+    frontend -->|target| vfrontend
+    vbackend -.breaks.-> whatsapp[WhatsApp cron scheduler<br/>⚠️ no persistent process on serverless]
 
     style mongo fill:#333,color:#999,stroke-dasharray: 5 5
-    style render fill:#4a1010,color:#fff
-    style vercel fill:#4a1010,color:#fff
+    style render fill:#333,color:#999,stroke-dasharray: 5 5
+    style vbackend fill:#4a1010,color:#fff
+    style vfrontend fill:#4a1010,color:#fff
+    style whatsapp fill:#4a3000,color:#fff
 ```
 
 ## Data model
@@ -91,9 +96,36 @@ Decision Log below.
 | Frontend (React/Vite) | ✅ Complete — **zero changes** needed for the DB migration |
 | Database | ✅ Live on Supabase (`retailpro` schema, project `tslqkswcrbihlavccjek`) |
 | Tests | ✅ 48/48 passing, against a real isolated Postgres schema |
-| GitHub | ✅ Pushed, `main` @ `38680c3` |
-| **Render (backend deploy)** | ❌ **Not done** — user must complete manually, no Render API access |
-| **Vercel (frontend deploy)** | ❌ **Not done** — blocked on Render being live (needs the API URL) |
+| GitHub | ✅ Pushed, `main` @ `2629126` |
+| ConfirmModal UX pattern | ✅ Replaces `window.confirm()` across all dashboard pages |
+| Render (backend deploy) | ⚪ Superseded — no longer the active plan |
+| **Vercel Serverless (backend deploy)** | ❌ **Not done** — configured (`backend/api/index.js`, `backend/vercel.json`) but never actually deployed. **WhatsApp cron will not run under this setup** — see below. |
+| **Vercel (frontend deploy)** | ❌ **Not done** |
+
+---
+
+## ⚠️ Open architectural question: Vercel Serverless backend vs. WhatsApp cron
+
+The user configured the backend for Vercel Serverless directly (`backend/api/index.js` exports the
+Express `app`; `backend/vercel.json` rewrites `/api/*` to it). This was **not discussed with an agent
+first** — flagging it here rather than silently working around it.
+
+Two real consequences, neither fixed yet:
+
+1. **`node-cron` cannot run.** `feature_whatsapp`'s scheduler (`startScheduler()` in `server.js`,
+   driving the 08:00 low-stock / 21:00 daily / Sunday 21:00 weekly WhatsApp reports) needs a
+   long-running process. The serverless entry point (`backend/api/index.js`) never calls it, and even
+   if it did, a serverless function doesn't stay alive to fire a cron trigger. **WhatsApp automation
+   will silently do nothing under this deployment** unless it's rebuilt on **Vercel Cron Jobs**
+   (calling dedicated HTTP endpoints on a schedule) or moved to a small always-on worker elsewhere.
+2. **Connection pool sizing.** `config/db.js`'s `pg.Pool` still uses `max: 10`, tuned for one
+   long-running server. Under serverless, each cold-start container gets its own pool — concurrent
+   invocations could multiply toward Supabase's pooler connection cap faster than a single Render
+   instance would. The usual serverless-safe pattern is `max: 1` and Supabase's transaction-mode
+   pooler (port 6543) instead of session mode.
+
+Next time this comes up: ask the user whether WhatsApp automation is expected to work on the
+serverless deployment before assuming either "fix it" or "ignore it."
 
 ---
 
@@ -139,8 +171,8 @@ Chronological, most-recent-relevant first. Full detail in `knowledge-graph.json`
    real arithmetic on these fields.
 7. **Tests run against a real, isolated Postgres schema**, not mocks — same principle as the earlier
    `mongodb-memory-server` choice, just ported to Postgres.
-8. **Vercel is blocked on Render** — deploying the frontend alone would just produce a URL with no
-   working backend behind it.
+8. **Vercel is blocked on Render** *(historical — see #10, no longer the active plan)* — deploying the
+   frontend alone would just produce a URL with no working backend behind it.
 9. **Ruled out the `deploy_to_vercel` MCP tool** (direct file upload, no git) for this project — it
    requires every source file embedded literally in the tool call. A test assembly of the frontend's
    payload (62 files, ~200KB even after excluding `package-lock.json`) hit ~113K tokens and got
@@ -148,6 +180,12 @@ Chronological, most-recent-relevant first. Full detail in `knowledge-graph.json`
    a small just-generated app, not an existing multi-file repo. **Use Vercel's dashboard "Import Git
    Repository" flow instead** — also better long-term since it auto-deploys on every future push,
    same as Render.
+10. **User pivoted the backend deployment target to Vercel Serverless** (commit `e837f35`, made
+    directly by the user, not through an agent). Consequence not yet resolved: the WhatsApp `node-cron`
+    scheduler cannot run on serverless — see the warning section above.
+11. **User replaced native `window.confirm()` with a custom `ConfirmModal` component** (commit
+    `ce57f35`) across every dashboard delete/remove action, matching the existing modal-overlay visual
+    pattern instead of the jarring native browser dialog.
 
 ---
 
@@ -183,22 +221,35 @@ backend/
     ├── setup.js                   Truncates all tables between tests
     └── globalTeardown.js          Drops retailpro_test (once per run)
 
+backend/
+├── api/index.js                  ⭐ Vercel Serverless entry point — exports `app`, no app.listen(),
+│                                    never calls connectDB()/startScheduler()
+├── vercel.json                   Rewrites /api/* -> /api/index.js
+└── render.yaml                   Superseded, not deleted
+
 frontend/
-└── src/                          Untouched by the DB migration — see README for structure
+├── src/                          Untouched by the DB migration — see README for structure
+└── src/components/ConfirmModal.jsx   Replaces window.confirm() across all dashboard pages
 
 docs/
 ├── knowledge-graph.json          ⭐ THIS — machine-readable source of truth
 ├── knowledge-graph.md            ⭐ THIS — human-readable view (you're reading it)
 └── design-brief.md               Material 3 design brief, all 17 screens
+
+PROJECT_OVERVIEW.md               Business/pitch doc — architecture summary + SaaS monetization
+                                   models (subscription tiers, freemium, add-ons). Not for dev setup.
 ```
 
 ---
 
 ## Open items
 
-- [ ] Deploy backend to Render (`backend/render.yaml` ready; user must do the dashboard steps —
+- [ ] Decide whether WhatsApp automation needs to work under Vercel Serverless — if yes, rebuild the
+      scheduler on Vercel Cron Jobs; if not, explicitly document it as disabled in this deployment
+- [ ] Reconsider `pg.Pool` sizing (`max: 10`) for serverless cold starts before real load
+- [ ] Deploy backend to Vercel Serverless (config ready; needs an actual deployment + env vars:
       `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CLIENT_URL`)
-- [ ] Deploy frontend to Vercel (blocked on the above — needs the Render URL for `VITE_API_URL`)
+- [ ] Deploy frontend to Vercel (dashboard Git-import flow; needs the backend URL for `VITE_API_URL`)
 - [ ] Rotate the Supabase DB password before this holds real shop data (it was shared in chat)
 - [ ] Camera barcode scanning built but never verified against a real camera (sandbox has none)
 - [ ] WhatsApp Cloud API delivery never tested with real credentials (only the no-op/logging path)

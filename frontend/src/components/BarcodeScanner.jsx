@@ -23,37 +23,44 @@ export default function BarcodeScanner({ onDetected, onClose }) {
     const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID, { verbose: false });
     scannerRef.current = scanner;
 
-    scanner
-      .start(
-        { facingMode: 'environment' }, // rear camera
-        { fps: 10, qrbox: { width: 260, height: 150 } },
-        (decodedText) => {
-          // Stop before handing off so the camera light goes out immediately
-          scanner
-            .stop()
-            .catch(() => {})
-            .finally(() => onDetected(decodedText));
-        },
-        () => {
-          // Per-frame decode misses are normal while aiming; ignore them
+    const onScanSuccess = (decodedText) => {
+      scanner
+        .stop()
+        .catch(() => {})
+        .finally(() => onDetected(decodedText));
+    };
+
+    const startCamera = async () => {
+      try {
+        const devices = await Html5Qrcode.getCameras();
+        if (devices && devices.length > 0) {
+          const backCamera = devices.find((d) => /back|rear|environment/i.test(d.label));
+          const cameraId = backCamera ? backCamera.id : devices[0].id;
+          await scanner.start(cameraId, { fps: 10, qrbox: { width: 260, height: 150 } }, onScanSuccess, () => {});
+        } else {
+          try {
+            await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 150 } }, onScanSuccess, () => {});
+          } catch {
+            await scanner.start({ facingMode: 'user' }, { fps: 10, qrbox: { width: 260, height: 150 } }, onScanSuccess, () => {});
+          }
         }
-      )
-      .then(() => {
         if (!cancelled) setStarting(false);
-      })
-      .catch((err) => {
+      } catch (err) {
         if (cancelled) return;
         setStarting(false);
         if (!window.isSecureContext) {
-          setError('Camera needs a secure connection. Open the app over HTTPS or on localhost.');
+          setError('Camera needs a secure connection (HTTPS or localhost).');
         } else if (/NotAllowedError|Permission/i.test(err?.message || '')) {
-          setError('Camera permission denied. Allow camera access in your browser settings.');
+          setError('Camera permission denied. Please allow camera access in your browser.');
         } else if (/NotFoundError/i.test(err?.message || '')) {
-          setError('No camera found on this device.');
+          setError('No camera device found on this computer/phone.');
         } else {
-          setError(`Could not start camera: ${err?.message || 'unknown error'}`);
+          setError(`Could not start camera: ${err?.message || 'Permission denied or device in use'}`);
         }
-      });
+      }
+    };
+
+    startCamera();
 
     return () => {
       cancelled = true;

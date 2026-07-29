@@ -12,7 +12,7 @@ const PRODUCT_SELECT = `
     p.expiry_date, p.supplier_id, p.image_url, p.is_active,
     p.created_at, p.updated_at,
     CASE WHEN c.id IS NOT NULL THEN jsonb_build_object('_id', c.id, 'name', c.name) ELSE NULL END AS category_id,
-    COUNT(*) OVER() AS full_count
+    (SELECT COUNT(*) FROM products WHERE shop_id = p.shop_id) AS full_count
   FROM products p
   LEFT JOIN categories c ON c.id = p.category_id
 `;

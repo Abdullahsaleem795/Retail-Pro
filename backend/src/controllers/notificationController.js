@@ -8,20 +8,41 @@ const {
   buildWhatsAppUrl,
 } = require('../services/whatsappService');
 
+const notificationCache = new Map();
+const CACHE_TTL_MS = 15000;
+
+const clearShopNotificationCache = (shopId) => {
+  for (const key of notificationCache.keys()) {
+    if (key.startsWith(`${shopId}:`)) {
+      notificationCache.delete(key);
+    }
+  }
+};
+
 const getNotifications = asyncHandler(async (req, res) => {
+  const cacheKey = `${req.shopId}:all`;
+  const cached = notificationCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
+
   const listResult = await query(
-    `SELECT *, COUNT(*) FILTER (WHERE is_read = false) OVER() AS unread_total
-     FROM notifications WHERE shop_id = $1 ORDER BY created_at DESC LIMIT 50`,
+    `SELECT n.*, (SELECT COUNT(*) FROM notifications WHERE shop_id = $1 AND is_read = false) AS unread_total
+     FROM notifications n WHERE n.shop_id = $1 ORDER BY n.created_at DESC LIMIT 50`,
     [req.shopId]
   );
   const notifications = mapRows(listResult.rows);
   const unreadCount = listResult.rows.length > 0 ? Number(listResult.rows[0].unread_total) : 0;
-  res.json({
+
+  const responsePayload = {
     success: true,
     unreadCount,
     count: notifications.length,
     data: notifications,
-  });
+  };
+
+  notificationCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 const markAsRead = asyncHandler(async (req, res) => {

@@ -2,8 +2,26 @@ const asyncHandler = require('express-async-handler');
 const { query } = require('../config/db');
 const { mapRow, mapRows } = require('../utils/sqlMapper');
 
+const supplierCache = new Map();
+const CACHE_TTL_MS = 15000;
+
+const clearShopSupplierCache = (shopId) => {
+  for (const key of supplierCache.keys()) {
+    if (key.startsWith(`${shopId}:`)) {
+      supplierCache.delete(key);
+    }
+  }
+};
+
 const getSuppliers = asyncHandler(async (req, res) => {
   const { search } = req.query;
+
+  const cacheKey = `${req.shopId}:${search || 'all'}`;
+  const cached = supplierCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
+
   const params = [req.shopId];
   let where = 'WHERE shop_id = $1';
   if (search) {
@@ -12,7 +30,10 @@ const getSuppliers = asyncHandler(async (req, res) => {
   }
   const { rows } = await query(`SELECT * FROM suppliers ${where} ORDER BY name`, params);
   const suppliers = mapRows(rows);
-  res.json({ success: true, count: suppliers.length, data: suppliers });
+  const responsePayload = { success: true, count: suppliers.length, data: suppliers };
+
+  supplierCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 const getSupplier = asyncHandler(async (req, res) => {
@@ -34,6 +55,7 @@ const createSupplier = asyncHandler(async (req, res) => {
      VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
     [req.shopId, name, contactPerson, phone, email, address, notes]
   );
+  clearShopSupplierCache(req.shopId);
   res.status(201).json({ success: true, data: mapRow(rows[0]) });
 });
 
@@ -53,6 +75,7 @@ const updateSupplier = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Supplier not found');
   }
+  clearShopSupplierCache(req.shopId);
   res.json({ success: true, data: mapRow(rows[0]) });
 });
 
@@ -65,6 +88,7 @@ const deleteSupplier = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Supplier not found');
   }
+  clearShopSupplierCache(req.shopId);
   res.json({ success: true, message: 'Supplier deleted' });
 });
 

@@ -10,18 +10,18 @@ import './DashboardLayout.css';
 // hidden unless the user's effective permissions include it, so a cashier
 // isn't shown links that would only 403 on them.
 const NAV_ITEMS = [
-  { to: '/dashboard', key: 'dashboard', end: true, permission: null },
-  { to: '/dashboard/pos', key: 'pos', permission: null },
-  { to: '/dashboard/inventory', key: 'inventory', permission: null },
-  { to: '/dashboard/categories', key: 'categories', permission: null },
-  { to: '/dashboard/sales', key: 'sales', permission: null },
-  { to: '/dashboard/purchases', key: 'purchases', permission: 'purchase:manage' },
-  { to: '/dashboard/suppliers', key: 'suppliers', permission: 'supplier:manage' },
-  { to: '/dashboard/customers', key: 'customers', permission: null },
-  { to: '/dashboard/expenses', key: 'expenses', permission: 'expense:manage' },
-  { to: '/dashboard/reports', key: 'reports', permission: 'report:view' },
-  { to: '/dashboard/staff', key: 'staff', permission: 'staff:manage' },
-  { to: '/dashboard/settings', key: 'settings', permission: 'shop:settings' },
+  { to: '/dashboard', key: 'dashboard', end: true, permission: null, prefetch: () => import('../pages/dashboard/DashboardHome') },
+  { to: '/dashboard/pos', key: 'pos', permission: null, prefetch: () => import('../pages/dashboard/POS') },
+  { to: '/dashboard/inventory', key: 'inventory', permission: null, prefetch: () => import('../pages/dashboard/Inventory') },
+  { to: '/dashboard/categories', key: 'categories', permission: null, prefetch: () => import('../pages/dashboard/Categories') },
+  { to: '/dashboard/sales', key: 'sales', permission: null, prefetch: () => import('../pages/dashboard/Sales') },
+  { to: '/dashboard/purchases', key: 'purchases', permission: 'purchase:manage', prefetch: () => import('../pages/dashboard/Purchases') },
+  { to: '/dashboard/suppliers', key: 'suppliers', permission: 'supplier:manage', prefetch: () => import('../pages/dashboard/Suppliers') },
+  { to: '/dashboard/customers', key: 'customers', permission: null, prefetch: () => import('../pages/dashboard/Customers') },
+  { to: '/dashboard/expenses', key: 'expenses', permission: 'expense:manage', prefetch: () => import('../pages/dashboard/Expenses') },
+  { to: '/dashboard/reports', key: 'reports', permission: 'report:view', prefetch: () => import('../pages/dashboard/Reports') },
+  { to: '/dashboard/staff', key: 'staff', permission: 'staff:manage', prefetch: () => import('../pages/dashboard/Staff') },
+  { to: '/dashboard/settings', key: 'settings', permission: 'shop:settings', prefetch: () => import('../pages/dashboard/Settings') },
 ];
 
 export default function DashboardLayout() {
@@ -50,7 +50,13 @@ export default function DashboardLayout() {
         <div className="dash-brand">RetailPro</div>
         <nav>
           {visibleItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.end} className="dash-nav-link">
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className="dash-nav-link"
+              onMouseEnter={() => item.prefetch && item.prefetch()}
+            >
               {t(`nav.${item.key}`)}
             </NavLink>
           ))}

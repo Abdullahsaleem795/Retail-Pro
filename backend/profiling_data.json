@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Dashboard Overview",
+    "url": "http://localhost:5000/api/reports/dashboard-overview",
+    "status": 200,
+    "coldTime": 1114,
+    "warmTime": 373,
+    "payloadBytes": 1442
+  },
+  {
+    "name": "Dashboard Summary",
+    "url": "http://localhost:5000/api/reports/dashboard",
+    "status": 200,
+    "coldTime": 646,
+    "warmTime": 247,
+    "payloadBytes": 142
+  },
+  {
+    "name": "Sales Trend (14 days)",
+    "url": "http://localhost:5000/api/reports/sales-trend?days=14",
+    "status": 200,
+    "coldTime": 550,
+    "warmTime": 509,
+    "payloadBytes": 750
+  },
+  {
+    "name": "Best Sellers (30 days)",
+    "url": "http://localhost:5000/api/reports/best-sellers?limit=5&days=30",
+    "status": 200,
+    "coldTime": 1336,
+    "warmTime": 245,
+    "payloadBytes": 562
+  },
+  {
+    "name": "Products (limit 50)",
+    "url": "http://localhost:5000/api/products?limit=50",
+    "status": 200,
+    "coldTime": 462,
+    "warmTime": 228,
+    "payloadBytes": 12349
+  },
+  {
+    "name": "Products Search",
+    "url": "http://localhost:5000/api/products?search=tea",
+    "status": 200,
+    "coldTime": 568,
+    "warmTime": 223,
+    "payloadBytes": 1090
+  },
+  {
+    "name": "Categories",
+    "url": "http://localhost:5000/api/categories",
+    "status": 200,
+    "coldTime": 444,
+    "warmTime": 315,
+    "payloadBytes": 1220
+  },
+  {
+    "name": "Customers",
+    "url": "http://localhost:5000/api/customers",
+    "status": 200,
+    "coldTime": 484,
+    "warmTime": 228,
+    "payloadBytes": 1154
+  },
+  {
+    "name": "Suppliers",
+    "url": "http://localhost:5000/api/suppliers",
+    "status": 200,
+    "coldTime": 447,
+    "warmTime": 290,
+    "payloadBytes": 1041
+  },
+  {
+    "name": "Expenses",
+    "url": "http://localhost:5000/api/expenses?limit=50",
+    "status": 200,
+    "coldTime": 835,
+    "warmTime": 216,
+    "payloadBytes": 1442
+  },
+  {
+    "name": "Sales History",
+    "url": "http://localhost:5000/api/sales?limit=50",
+    "status": 200,
+    "coldTime": 716,
+    "warmTime": 217,
+    "payloadBytes": 41297
+  },
+  {
+    "name": "Purchases",
+    "url": "http://localhost:5000/api/purchases?limit=50",
+    "status": 200,
+    "coldTime": 438,
+    "warmTime": 647,
+    "payloadBytes": 55
+  },
+  {
+    "name": "Notifications",
+    "url": "http://localhost:5000/api/notifications",
+    "status": 200,
+    "coldTime": 720,
+    "warmTime": 217,
+    "payloadBytes": 52
+  },
+  {
+    "name": "Profit Report",
+    "url": "http://localhost:5000/api/reports/profit",
+    "status": 200,
+    "coldTime": 2722,
+    "warmTime": 462,
+    "payloadBytes": 177
+  },
+  {
+    "name": "Reorder Suggestions",
+    "url": "http://localhost:5000/api/reports/reorder",
+    "status": 200,
+    "coldTime": 458,
+    "warmTime": 621,
+    "payloadBytes": 2329
+  }
+]

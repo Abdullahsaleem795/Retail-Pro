@@ -9,6 +9,80 @@ import './Inventory.css';
 
 const BUSINESS_TYPES = ['kiryana', 'general', 'medical', 'wholesale', 'other'];
 
+const PLAN_DETAILS = {
+  basic: {
+    nameEn: 'Basic Plan',
+    nameUr: 'بنیادی پلان',
+    price: 'Rs 1,500 / month',
+    taglineEn: 'Essential POS & Inventory features for small single-counter stores.',
+    taglineUr: 'چھوٹے اسٹورز کے لیے بنیادی پی او ایس اور انوینٹری کی خصوصیات۔',
+    benefitsEn: [
+      '⚡ 1 POS Terminal & Billing Counter',
+      '📦 Up to 500 Inventory Products',
+      '👥 Up to 2 Staff Accounts (Cashiers)',
+      '📊 Daily Sales & Expense Tracking Reports',
+      '🧾 Thermal Receipt Printing & Search History',
+      '💬 Standard In-App Customer Management',
+    ],
+    benefitsUr: [
+      '⚡ 1 پی او ایس ٹرمینل اور بلنگ کاؤنٹر',
+      '📦 500 تک سامان/انوینٹری کی پروڈکٹس',
+      '👥 2 تک اسٹاف اکاؤنٹس (کیشیئر)',
+      '📊 روزانہ کی فروخت اور اخراجات کی رپورٹ',
+      '🧾 تھرمل رسید پرنٹنگ اور ہسٹری سرچ',
+      '💬 عام ان اپپ کسٹمر مینجمنٹ',
+    ],
+  },
+  pro: {
+    nameEn: 'Pro Plan (🌟 Recommended)',
+    nameUr: 'پرو پلان (🌟 بہترین تجویز)',
+    price: 'Rs 3,500 / month',
+    taglineEn: 'Full automation, WhatsApp integration & BI analytics for growing stores.',
+    taglineUr: 'بڑھتے ہوئے کاروبار کے لیے مکمل واٹس ایپ آٹومیشن اور ایڈوانسڈ رپورٹس۔',
+    benefitsEn: [
+      '✨ Everything included in Basic Plan, PLUS:',
+      '📲 Automated 1-Click WhatsApp Low Stock Alerts & Supplier Reorder Drafts',
+      '👥 Unlimited Staff Accounts (Managers & Cashiers with Custom Permissions)',
+      '📈 Advanced BI Analytics (Dead Stock Finder, Margin Warnings & Profit Insights)',
+      '💬 1-Click WhatsApp Customer Debt (Udhari) Reminders with PDF Receipts',
+      '🧾 Custom Store Logo & Thermal Receipt Header Customization',
+      '⚡ Priority In-App & Email Technical Support',
+    ],
+    benefitsUr: [
+      '✨ بنیادی پلان کی تمام خصوصیات شامل ہیں، مزید:',
+      '📲 واٹس ایپ پر آٹو لو اسٹاک الرٹس اور 1-کلک سپلائر آرڈر ڈرافٹس',
+      '👥 لامحدود اسٹاف اکاؤنٹس (منیجر اور کیشیئر کسٹم پرمیشنز کے ساتھ)',
+      '📈 ایڈوانسڈ بزنس رپورٹس (ڈیڈ اسٹاک، منافع اور نقصان وارننگ)',
+      '💬 واٹس ایپ پر کسٹمرز کو ادھاری (کھاتہ) کی یاددہانی اور PDF رسید',
+      '🧾 کسٹم اسٹور لوگو اور رسید پرنٹنگ ڈیزائننگ',
+      '⚡ ترجیحی واٹس ایپ اور ای میل تکنیکی مدد',
+    ],
+  },
+  enterprise: {
+    nameEn: 'Enterprise Plan',
+    nameUr: 'انٹرپرائز پلان',
+    price: 'Rs 7,500 / month',
+    taglineEn: 'Unlimited power for multi-branch retail chains & large supermarkets.',
+    taglineUr: 'ملٹی برانچ اسٹورز اور بڑے سپرمارکیٹس کے لیے لا محدود خصوصیات۔',
+    benefitsEn: [
+      '✨ Everything included in Pro Plan, PLUS:',
+      '🏢 Multi-Branch & Multi-Counter Inventory Synchronization',
+      '⚡ 24/7 Dedicated Priority Phone & WhatsApp Account Manager Support',
+      '🔄 Custom ERP, Accounting & Payment Gateway Integration',
+      '💾 Automated Hourly Offsite Secure Database Backups',
+      '🎯 Custom Feature Requests & Onsite Staff Setup/Training',
+    ],
+    benefitsUr: [
+      '✨ پرو پلان کی تمام خصوصیات شامل ہیں، مزید:',
+      '🏢 ملٹی برانچ اور ملٹی کاؤنٹر انوینٹری کی ہم آہنگی (سنک)',
+      '⚡ 24/7 💎 خصوصی فون اور واٹس ایپ اکاؤنٹ منیجر سپورٹ',
+      '🔄 کسٹم ای آر پی، اکاؤنٹنگ اور پیمنٹ گیٹ وے انٹیگریشن',
+      '💾 خودکار گھنٹہ وار ڈیٹا بیس کا محفوظ بیک اپ',
+      '🎯 خصوصی فیچرز کی تیاری اور اسٹاف کی عملی تربیت',
+    ],
+  },
+};
+
 export default function Settings() {
   const { user } = useAuth();
   const [form, setForm] = useState(null);
@@ -17,6 +91,7 @@ export default function Settings() {
 
   // Subscription upgrade form state
   const [planRequested, setPlanRequested] = useState('pro');
+  const [planLang, setPlanLang] = useState('en'); // 'en' | 'ur'
   const [paymentChannel, setPaymentChannel] = useState('JazzCash');
   const [transactionId, setTransactionId] = useState('');
   const [submittingTrx, setSubmittingTrx] = useState(false);
@@ -228,7 +303,44 @@ export default function Settings() {
 
           {isOwner && (
             <form onSubmit={handleUpgradeSubmit} style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
-              <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', color: '#0f172a' }}>Submit Payment & Request Upgrade</h4>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a' }}>Submit Payment & Request Upgrade</h4>
+                <div style={{ display: 'flex', gap: '0.25rem', background: '#e2e8f0', padding: 2, borderRadius: 6 }}>
+                  <button
+                    type="button"
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '0.75rem',
+                      borderRadius: 4,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: planLang === 'en' ? '#2563eb' : 'transparent',
+                      color: planLang === 'en' ? '#fff' : '#475569',
+                      fontWeight: planLang === 'en' ? 'bold' : 'normal',
+                    }}
+                    onClick={() => setPlanLang('en')}
+                  >
+                    English
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      padding: '2px 8px',
+                      fontSize: '0.75rem',
+                      borderRadius: 4,
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: planLang === 'ur' ? '#2563eb' : 'transparent',
+                      color: planLang === 'ur' ? '#fff' : '#475569',
+                      fontWeight: planLang === 'ur' ? 'bold' : 'normal',
+                    }}
+                    onClick={() => setPlanLang('ur')}
+                  >
+                    اردو
+                  </button>
+                </div>
+              </div>
+
               <div className="form-row">
                 <div className="form-field">
                   <label>Select Plan</label>
@@ -256,6 +368,37 @@ export default function Settings() {
                   />
                 </div>
               </div>
+
+              {/* Dynamic Selected Plan Benefits Box */}
+              {PLAN_DETAILS[planRequested] && (
+                <div
+                  style={{
+                    background: planRequested === 'pro' ? '#f0fdf4' : planRequested === 'enterprise' ? '#faf5ff' : '#eff6ff',
+                    border: planRequested === 'pro' ? '1px solid #bbf7d0' : planRequested === 'enterprise' ? '1px solid #e9d5ff' : '1px solid #bfdbfe',
+                    borderRadius: 8,
+                    padding: '0.9rem 1.1rem',
+                    margin: '1rem 0',
+                    direction: planLang === 'ur' ? 'rtl' : 'ltr',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
+                    <strong style={{ color: planRequested === 'pro' ? '#15803d' : planRequested === 'enterprise' ? '#6b21a8' : '#1d4ed8', fontSize: '0.9rem' }}>
+                      ✨ {planLang === 'ur' ? PLAN_DETAILS[planRequested].nameUr : PLAN_DETAILS[planRequested].nameEn} ({PLAN_DETAILS[planRequested].price})
+                    </strong>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>
+                      {planLang === 'ur' ? 'پلان کی خصوصیات' : 'Included Benefits'}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: '#475569', margin: '0 0 0.5rem' }}>
+                    {planLang === 'ur' ? PLAN_DETAILS[planRequested].taglineUr : PLAN_DETAILS[planRequested].taglineEn}
+                  </p>
+                  <ul style={{ margin: 0, paddingRight: planLang === 'ur' ? '1.2rem' : 0, paddingLeft: planLang === 'en' ? '1.2rem' : 0, fontSize: '0.82rem', color: '#1e293b', lineHeight: '1.6' }}>
+                    {(planLang === 'ur' ? PLAN_DETAILS[planRequested].benefitsUr : PLAN_DETAILS[planRequested].benefitsEn).map((b, idx) => (
+                      <li key={idx}>{b}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <button type="submit" className="btn-primary btn-inline" disabled={submittingTrx}>
                   {submittingTrx ? 'Submitting...' : 'Submit Payment Verification'}

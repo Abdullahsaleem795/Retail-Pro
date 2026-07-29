@@ -1,5 +1,5 @@
-import { Suspense } from 'react';
-import { NavLink, Outlet, Link } from 'react-router-dom';
+import { Suspense, useEffect } from 'react';
+import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/useAuth';
 import LanguageSwitch from '../components/LanguageSwitch';
@@ -27,6 +27,20 @@ const NAV_ITEMS = [
 export default function DashboardLayout() {
   const { user, shop, logout, can } = useAuth();
   const { t } = useTranslation();
+  const location = useLocation();
+
+  useEffect(() => {
+    const activeItem = NAV_ITEMS.find((item) =>
+      item.end ? location.pathname === item.to : location.pathname.startsWith(item.to)
+    );
+    if (activeItem) {
+      document.title = `${t(`nav.${activeItem.key}`)} | Retail Pro`;
+    } else if (location.pathname.includes('/profile')) {
+      document.title = `Profile | Retail Pro`;
+    } else {
+      document.title = `Retail Pro`;
+    }
+  }, [location.pathname, t]);
 
   const visibleItems = NAV_ITEMS.filter((item) => !item.permission || can(item.permission));
 

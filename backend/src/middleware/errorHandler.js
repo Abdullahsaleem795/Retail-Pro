@@ -20,7 +20,14 @@ const errorHandler = (err, req, res, next) => {
     // unique_violation
     statusCode = 409;
     const match = /Key \(([^)]+)\)/.exec(err.detail || '');
-    message = `Duplicate value for field: ${match ? match[1] : 'unknown'}`;
+    const field = match ? match[1] : 'unknown';
+    if (field === 'email') {
+      message = 'An account with this email address is already registered. Please sign in instead.';
+    } else if (field === 'barcode') {
+      message = 'A product with this barcode already exists in your inventory.';
+    } else {
+      message = `Duplicate value for field: ${field}`;
+    }
   }
 
   if (err.code === '23503') {

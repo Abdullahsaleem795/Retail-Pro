@@ -140,7 +140,7 @@ export default function POS() {
       addToCart(res.data);
       setSearch('');
     } catch {
-      // not a barcode match - leave as free text search
+      toast.error(`No product matches barcode "${search.trim()}"`);
     }
   };
 
@@ -174,7 +174,7 @@ export default function POS() {
   const removeFromCart = (productId) => setCart((prev) => prev.filter((item) => item.productId !== productId));
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0), [cart]);
-  const discountValue = Number(discount) || 0;
+  const discountValue = useMemo(() => Math.min(Math.max(Number(discount) || 0, 0), subtotal), [discount, subtotal]);
   const total = Math.max(subtotal - discountValue, 0);
 
   const handleCheckout = async () => {

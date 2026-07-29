@@ -23,6 +23,7 @@ const Settings = lazy(() => import('./pages/dashboard/Settings'));
 const Categories = lazy(() => import('./pages/dashboard/Categories'));
 const Staff = lazy(() => import('./pages/dashboard/Staff'));
 const Profile = lazy(() => import('./pages/dashboard/Profile'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
   useEffect(() => {
@@ -56,7 +57,7 @@ function App() {
           </Route>
 
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

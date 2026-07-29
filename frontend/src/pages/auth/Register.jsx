@@ -11,6 +11,7 @@ const initialForm = {
   phone: '',
   email: '',
   password: '',
+  confirmPassword: '',
   city: '',
 };
 
@@ -23,12 +24,35 @@ export default function Register() {
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 
+  const getPasswordStrength = (pass) => {
+    if (!pass) return null;
+    if (pass.length < 6) return { label: 'Too short', color: '#ef4444' };
+    if (pass.length >= 8 && /[A-Z]/.test(pass) && /[0-9]/.test(pass)) return { label: 'Strong', color: '#22c55e' };
+    return { label: 'Medium', color: '#eab308' };
+  };
+
+  const strength = getPasswordStrength(form.password);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     setLoading(true);
     try {
-      await register(form);
+      await register({
+        shopName: form.shopName,
+        businessType: form.businessType,
+        ownerName: form.ownerName,
+        phone: form.phone,
+        email: form.email,
+        password: form.password,
+        city: form.city,
+      });
       navigate('/dashboard');
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
@@ -44,7 +68,7 @@ export default function Register() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        style={{ maxWidth: 480 }}
+        style={{ maxWidth: 520 }}
       >
         <div className="auth-brand">RetailPro</div>
         <div className="auth-subtitle">Set up your shop in under a minute</div>
@@ -90,17 +114,36 @@ export default function Register() {
             <input id="email" name="email" type="email" value={form.email} onChange={handleChange} required />
           </div>
 
-          <div className="form-field">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              minLength={6}
-              value={form.password}
-              onChange={handleChange}
-              required
-            />
+          <div className="form-row">
+            <div className="form-field">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                minLength={6}
+                value={form.password}
+                onChange={handleChange}
+                required
+              />
+              {strength && (
+                <span style={{ fontSize: '0.72rem', color: strength.color, marginTop: '2px', fontWeight: 600 }}>
+                  Strength: {strength.label}
+                </span>
+              )}
+            </div>
+            <div className="form-field">
+              <label htmlFor="confirmPassword">Confirm Password</label>
+              <input
+                id="confirmPassword"
+                name="confirmPassword"
+                type="password"
+                minLength={6}
+                value={form.confirmPassword}
+                onChange={handleChange}
+                required
+              />
+            </div>
           </div>
 
           <button className="btn-primary" type="submit" disabled={loading}>

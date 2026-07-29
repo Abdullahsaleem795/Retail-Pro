@@ -144,6 +144,25 @@ export default function ProductFormModal({ product, categories, onCreateCategory
             </div>
           </div>
 
+          {Number(form.costPrice) > 0 &&
+            Number(form.sellingPrice) > 0 &&
+            Number(form.sellingPrice) < Number(form.costPrice) && (
+              <div
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: 6,
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fca5a5',
+                  color: '#dc2626',
+                  fontSize: '0.78rem',
+                  fontWeight: 500,
+                  marginBottom: '1rem',
+                }}
+              >
+                ⚠️ Warning: Selling price is below cost price (Loss: Rs {(Number(form.costPrice) - Number(form.sellingPrice)).toFixed(2)} / unit)
+              </div>
+            )}
+
           <div className="form-row">
             <div className="form-field">
               <label>Stock Quantity</label>

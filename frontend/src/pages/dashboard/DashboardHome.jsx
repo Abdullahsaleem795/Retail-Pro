@@ -13,7 +13,7 @@ import {
   Bar,
 } from 'recharts';
 import toast from 'react-hot-toast';
-import { getDashboardSummary, getSalesTrend, getBestSellers } from '../../api/reports';
+import { getDashboardOverview } from '../../api/reports';
 import { formatCurrency } from '../../utils/format';
 import './DashboardHome.css';
 
@@ -26,20 +26,17 @@ export default function DashboardHome() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [summaryRes, trendRes, bestRes] = await Promise.all([
-          getDashboardSummary(),
-          getSalesTrend(14),
-          getBestSellers({ limit: 5, days: 30 }),
-        ]);
-        setSummary(summaryRes.data);
+        const res = await getDashboardOverview();
+        const { summary: s, trend: t, bestSellers: b } = res.data;
+        setSummary(s);
         setTrend(
-          trendRes.data.map((d) => ({
-            date: d._id.slice(5), // MM-DD is enough for a 14-day axis
+          (t || []).map((d) => ({
+            date: d._id.slice(5),
             total: d.total,
             transactions: d.transactions,
           }))
         );
-        setBestSellers(bestRes.data.map((b) => ({ name: b.name, sold: b.quantitySold })));
+        setBestSellers((b || []).map((item) => ({ name: item.name, sold: item.quantitySold })));
       } catch {
         toast.error('Failed to load dashboard data');
       } finally {

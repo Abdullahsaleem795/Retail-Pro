@@ -1,5 +1,6 @@
 import apiClient from './client';
 
+export const getDashboardOverview = () => apiClient.get('/reports/dashboard-overview').then((r) => r.data);
 export const getDashboardSummary = () => apiClient.get('/reports/dashboard').then((r) => r.data);
 export const getSalesTrend = (days) => apiClient.get('/reports/sales-trend', { params: { days } }).then((r) => r.data);
 export const getProfitReport = (params) => apiClient.get('/reports/profit', { params }).then((r) => r.data);

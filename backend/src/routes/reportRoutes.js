@@ -1,6 +1,7 @@
 const express = require('express');
 const { protect } = require('../middleware/auth');
 const {
+  getDashboardOverview,
   getDashboardSummary,
   getSalesTrend,
   getProfitReport,
@@ -14,6 +15,7 @@ const {
 const router = express.Router();
 router.use(protect);
 
+router.get('/dashboard-overview', getDashboardOverview);
 router.get('/dashboard', getDashboardSummary);
 router.get('/sales-trend', getSalesTrend);
 router.get('/profit', getProfitReport);

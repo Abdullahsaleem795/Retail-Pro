@@ -13,63 +13,136 @@ const daysAgo = (n) => {
   return d;
 };
 
+const reportCache = new Map();
+const CACHE_TTL_MS = 15000;
+
 // GET /api/reports/dashboard - the numbers behind the dashboard stat cards
 const getDashboardSummary = asyncHandler(async (req, res) => {
+  const cacheKey = `summary:${req.shopId}`;
+  const cached = reportCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
+
   const todayStart = startOfDay();
 
-  const [salesResult, productResult, lowStockResult, pendingResult] = await Promise.all([
-    query(
-      `SELECT COALESCE(SUM(total_amount),0) AS total, COUNT(*) AS count
-       FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2`,
-      [req.shopId, todayStart]
-    ),
-    query(
-      `SELECT COUNT(*) AS count, COALESCE(SUM(stock_quantity * cost_price),0) AS stock_value
-       FROM products WHERE shop_id = $1 AND is_active = true`,
-      [req.shopId]
-    ),
-    query(
-      `SELECT COUNT(*) FROM products
-       WHERE shop_id = $1 AND is_active = true AND stock_quantity <= low_stock_threshold`,
-      [req.shopId]
-    ),
-    query(`SELECT COUNT(*) FROM purchases WHERE shop_id = $1 AND status = 'pending'`, [req.shopId]),
-  ]);
+  const { rows } = await query(
+    `SELECT
+       (SELECT COALESCE(SUM(total_amount),0) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2) AS today_sales,
+       (SELECT COUNT(*) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2) AS today_transactions,
+       (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true) AS products_in_stock,
+       (SELECT COALESCE(SUM(stock_quantity * cost_price),0) FROM products WHERE shop_id = $1 AND is_active = true) AS stock_value,
+       (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true AND stock_quantity <= low_stock_threshold) AS low_stock_items,
+       (SELECT COUNT(*) FROM purchases WHERE shop_id = $1 AND status = 'pending') AS pending_purchases`,
+    [req.shopId, todayStart]
+  );
 
-  res.json({
+  const row = rows[0] || {};
+  const responsePayload = {
     success: true,
     data: {
-      todaySales: Number(salesResult.rows[0].total),
-      todayTransactions: Number(salesResult.rows[0].count),
-      productsInStock: Number(productResult.rows[0].count),
-      stockValue: Number(productResult.rows[0].stock_value),
-      lowStockItems: Number(lowStockResult.rows[0].count),
-      pendingPurchases: Number(pendingResult.rows[0].count),
+      todaySales: Number(row.today_sales || 0),
+      todayTransactions: Number(row.today_transactions || 0),
+      productsInStock: Number(row.products_in_stock || 0),
+      stockValue: Number(row.stock_value || 0),
+      lowStockItems: Number(row.low_stock_items || 0),
+      pendingPurchases: Number(row.pending_purchases || 0),
     },
-  });
+  };
+
+  reportCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
+});
+
+// GET /api/reports/dashboard-overview - Combined single-call for superfast Dashboard Home loading
+const getDashboardOverview = asyncHandler(async (req, res) => {
+  const cacheKey = `overview:${req.shopId}`;
+  const cached = reportCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
+
+  const todayStart = startOfDay();
+  const trendDaysAgo = daysAgo(14);
+  const bestDaysAgo = daysAgo(30);
+
+  const summaryResult = await query(
+    `SELECT
+       (SELECT COALESCE(SUM(total_amount),0) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2) AS today_sales,
+       (SELECT COUNT(*) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2) AS today_transactions,
+       (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true) AS products_in_stock,
+       (SELECT COALESCE(SUM(stock_quantity * cost_price),0) FROM products WHERE shop_id = $1 AND is_active = true) AS stock_value,
+       (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true AND stock_quantity <= low_stock_threshold) AS low_stock_items,
+       (SELECT COUNT(*) FROM purchases WHERE shop_id = $1 AND status = 'pending') AS pending_purchases`,
+    [req.shopId, todayStart]
+  );
+
+  const trendResult = await query(
+    `SELECT created_at::date::text AS id, SUM(total_amount) AS total, COUNT(*) AS transactions
+     FROM sales
+     WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2
+     GROUP BY created_at::date
+     ORDER BY id ASC`,
+    [req.shopId, trendDaysAgo]
+  );
+
+  const bestResult = await query(
+    `SELECT si.product_id AS id, MIN(si.name) AS name,
+            SUM(si.quantity) AS quantity_sold, SUM(si.subtotal) AS revenue
+     FROM sales s JOIN sale_items si ON si.sale_id = s.id
+     WHERE s.shop_id = $1 AND s.status = 'completed' AND s.created_at >= $2
+     GROUP BY si.product_id
+     ORDER BY quantity_sold DESC
+     LIMIT 5`,
+    [req.shopId, bestDaysAgo]
+  );
+
+  const row = summaryResult.rows[0] || {};
+  const responsePayload = {
+    success: true,
+    data: {
+      summary: {
+        todaySales: Number(row.today_sales || 0),
+        todayTransactions: Number(row.today_transactions || 0),
+        productsInStock: Number(row.products_in_stock || 0),
+        stockValue: Number(row.stock_value || 0),
+        lowStockItems: Number(row.low_stock_items || 0),
+        pendingPurchases: Number(row.pending_purchases || 0),
+      },
+      trend: mapRows(trendResult.rows).map((r) => ({ _id: r._id, total: Number(r.total), transactions: Number(r.transactions) })),
+      bestSellers: mapRows(bestResult.rows).map((r) => ({ _id: r._id, name: r.name, quantitySold: Number(r.quantitySold), revenue: Number(r.revenue) })),
+    },
+  };
+
+  reportCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 // GET /api/reports/sales-trend?days=14
 const getSalesTrend = asyncHandler(async (req, res) => {
   const days = Math.min(Number(req.query.days) || 14, 90);
+  const cacheKey = `trend:${req.shopId}:${days}`;
+  const cached = reportCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
 
-  // Aliasing the grouped date string as `id` deliberately reuses the shared
-  // row-mapper's id -> _id rename, matching what the frontend already reads
-  // off Mongo's { $group: { _id: dateString } } shape (DashboardHome.jsx
-  // does `d._id.slice(5)`).
   const { rows } = await query(
-    `SELECT to_char(created_at, 'YYYY-MM-DD') AS id, SUM(total_amount) AS total, COUNT(*) AS transactions
+    `SELECT created_at::date::text AS id, SUM(total_amount) AS total, COUNT(*) AS transactions
      FROM sales
      WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2
-     GROUP BY to_char(created_at, 'YYYY-MM-DD')
+     GROUP BY created_at::date
      ORDER BY id ASC`,
     [req.shopId, daysAgo(days)]
   );
 
-  res.json({
+  const responsePayload = {
     success: true,
     data: mapRows(rows).map((r) => ({ _id: r._id, total: Number(r.total), transactions: Number(r.transactions) })),
-  });
+  };
+
+  reportCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 // GET /api/reports/profit?from=&to=  - revenue vs cost vs expenses
@@ -104,6 +177,11 @@ const getProfitReport = asyncHandler(async (req, res) => {
 const getBestSellers = asyncHandler(async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 10, 50);
   const days = Math.min(Number(req.query.days) || 30, 365);
+  const cacheKey = `best:${req.shopId}:${limit}:${days}`;
+  const cached = reportCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
 
   const { rows } = await query(
     `SELECT si.product_id AS id, MIN(si.name) AS name,
@@ -116,7 +194,7 @@ const getBestSellers = asyncHandler(async (req, res) => {
     [req.shopId, daysAgo(days), limit]
   );
 
-  res.json({
+  const responsePayload = {
     success: true,
     data: mapRows(rows).map((r) => ({
       _id: r._id,
@@ -124,7 +202,10 @@ const getBestSellers = asyncHandler(async (req, res) => {
       quantitySold: Number(r.quantitySold),
       revenue: Number(r.revenue),
     })),
-  });
+  };
+
+  reportCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 // GET /api/reports/dead-stock?days=60 - products with zero sales in the window
@@ -281,6 +362,7 @@ const getReorderSuggestions = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  getDashboardOverview,
   getDashboardSummary,
   getSalesTrend,
   getProfitReport,

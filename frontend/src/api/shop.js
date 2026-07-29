@@ -7,3 +7,5 @@ export const createUser = (payload) => apiClient.post('/shop/users', payload).th
 export const updateUser = (id, payload) => apiClient.put(`/shop/users/${id}`, payload).then((r) => r.data);
 export const deleteUser = (id) => apiClient.delete(`/shop/users/${id}`).then((r) => r.data);
 export const getGrantablePermissions = () => apiClient.get('/shop/permissions').then((r) => r.data);
+export const requestSubscriptionUpgrade = (payload) => apiClient.post('/shop/subscription/request-upgrade', payload).then((r) => r.data);
+export const activateSubscription = (payload) => apiClient.post('/shop/subscription/activate', payload).then((r) => r.data);

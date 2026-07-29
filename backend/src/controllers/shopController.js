@@ -163,6 +163,60 @@ const deleteUser = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'User removed' });
 });
 
+// POST /api/shop/subscription/request-upgrade
+const requestSubscriptionUpgrade = asyncHandler(async (req, res) => {
+  const { planRequested, paymentChannel, transactionId, notes } = req.body;
+
+  const trxRef = `${paymentChannel || 'Transfer'} TRX: ${transactionId || 'Pending'} (${planRequested || 'Pro'})`;
+  await query(
+    `UPDATE shops SET last_payment_trx = $1, subscription_status = 'pending_activation' WHERE id = $2`,
+    [trxRef, req.shopId]
+  );
+
+  const { rows: shopRows } = await query('SELECT * FROM shops WHERE id = $1', [req.shopId]);
+  const shop = mapRow(shopRows[0]);
+
+  // Insert notification for audit trail
+  const message = `Upgrade request submitted for ${planRequested || 'Pro Plan'} via ${paymentChannel || 'Transfer'}. TRX ID: ${transactionId || 'N/A'}`;
+  await query(
+    `INSERT INTO notifications (shop_id, type, title, message, channel, delivery_status)
+     VALUES ($1, 'subscription', 'Subscription Upgrade Submitted', $2, 'in_app', 'sent')`,
+    [req.shopId, message]
+  );
+
+  const whatsappMsg = `Assalam-o-Alaikum,\n\nShop *${shop.name}* (ID: ${shop._id}) requested subscription upgrade:\n• Plan: *${planRequested || 'Pro'}*\n• Payment Mode: *${paymentChannel || 'JazzCash/EasyPaisa'}*\n• TRX ID: *${transactionId || 'N/A'}*\n\nPlease verify and activate subscription.`;
+  const cleanPhone = (process.env.ADMIN_WHATSAPP || '923056779779').replace(/\D/g, '');
+  const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappMsg)}`;
+
+  res.json({
+    success: true,
+    message: 'Subscription upgrade request recorded. Please send payment proof via WhatsApp.',
+    whatsappUrl,
+    data: shop,
+  });
+});
+
+// POST /api/shop/subscription/activate (For Admin/Owner to set plan and extend validity)
+const activateSubscription = asyncHandler(async (req, res) => {
+  const { plan, durationMonths = 1 } = req.body;
+
+  const { rows } = await query(
+    `UPDATE shops SET
+       subscription_plan = $1,
+       subscription_status = 'active',
+       subscription_ends_at = NOW() + ($2 || '1 month')::interval
+     WHERE id = $3
+     RETURNING *`,
+    [plan || 'pro', `${durationMonths} months`, req.shopId]
+  );
+
+  res.json({
+    success: true,
+    message: `Subscription updated to ${plan || 'pro'} plan for ${durationMonths} month(s)`,
+    data: mapRow(rows[0]),
+  });
+});
+
 module.exports = {
   getShop,
   updateShop,
@@ -171,4 +225,6 @@ module.exports = {
   updateUser,
   deleteUser,
   getGrantablePermissions,
+  requestSubscriptionUpgrade,
+  activateSubscription,
 };

@@ -15,6 +15,7 @@ import {
 import toast from 'react-hot-toast';
 import { getDashboardOverview } from '../../api/reports';
 import { formatCurrency } from '../../utils/format';
+import SkeletonLoader from '../../components/SkeletonLoader';
 import './DashboardHome.css';
 
 export default function DashboardHome() {
@@ -65,7 +66,14 @@ export default function DashboardHome() {
     },
   ];
 
-  if (loading) return <div className="page-loader">Loading dashboard...</div>;
+  if (loading) {
+    return (
+      <div>
+        <h1 className="page-title">Dashboard</h1>
+        <SkeletonLoader type="card" count={6} />
+      </div>
+    );
+  }
 
   return (
     <div>

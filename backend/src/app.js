@@ -42,7 +42,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(compression());
+app.use(compression({ level: 6, threshold: 0 }));
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 // express-mongo-sanitize was MongoDB-specific ($/. key stripping) and is no

@@ -9,14 +9,16 @@ const {
 } = require('../services/whatsappService');
 
 const getNotifications = asyncHandler(async (req, res) => {
-  const [listResult, unreadResult] = await Promise.all([
-    query('SELECT * FROM notifications WHERE shop_id = $1 ORDER BY created_at DESC LIMIT 50', [req.shopId]),
-    query('SELECT COUNT(*) FROM notifications WHERE shop_id = $1 AND is_read = false', [req.shopId]),
-  ]);
+  const listResult = await query(
+    `SELECT *, COUNT(*) FILTER (WHERE is_read = false) OVER() AS unread_total
+     FROM notifications WHERE shop_id = $1 ORDER BY created_at DESC LIMIT 50`,
+    [req.shopId]
+  );
   const notifications = mapRows(listResult.rows);
+  const unreadCount = listResult.rows.length > 0 ? Number(listResult.rows[0].unread_total) : 0;
   res.json({
     success: true,
-    unreadCount: Number(unreadResult.rows[0].count),
+    unreadCount,
     count: notifications.length,
     data: notifications,
   });

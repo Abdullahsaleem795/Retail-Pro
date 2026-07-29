@@ -32,8 +32,25 @@ const fetchFullSale = async (id) => {
   return mapRow(rows[0]);
 };
 
+const salesCache = new Map();
+const CACHE_TTL_MS = 15000;
+
+const clearShopSalesCache = (shopId) => {
+  for (const key of salesCache.keys()) {
+    if (key.startsWith(`${shopId}:`)) {
+      salesCache.delete(key);
+    }
+  }
+};
+
 const getSales = asyncHandler(async (req, res) => {
   const { from, to, customerId, page = 1, limit = 20 } = req.query;
+
+  const cacheKey = `${req.shopId}:${customerId || ''}:${from || ''}:${to || ''}:${page}:${limit}`;
+  const cached = salesCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
 
   const conditions = ['s.shop_id = $1'];
   const params = [req.shopId];
@@ -53,21 +70,43 @@ const getSales = asyncHandler(async (req, res) => {
   const skip = (Number(page) - 1) * Number(limit);
   params.push(Number(limit), skip);
 
-  const [listResult, countResult] = await Promise.all([
-    query(
-      `${SALE_SELECT} ${where} ORDER BY s.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params
-    ),
-    query(`SELECT COUNT(*) FROM sales s ${where}`, params.slice(0, params.length - 2)),
-  ]);
+  const listQuery = `
+    SELECT
+      s.id, s.shop_id, s.subtotal, s.discount, s.tax, s.total_amount, s.payment_method,
+      s.amount_paid, s.status, s.cashier_id, s.receipt_number, s.client_ref,
+      s.synced_from_offline, s.created_at, s.updated_at,
+      COUNT(*) OVER() AS full_count,
+      CASE WHEN c.id IS NOT NULL
+        THEN jsonb_build_object('_id', c.id, 'name', c.name, 'phone', c.phone)
+        ELSE NULL END AS customer_id,
+      COALESCE(
+        (SELECT jsonb_agg(jsonb_build_object(
+            'productId', si.product_id, 'name', si.name, 'quantity', si.quantity,
+            'unitPrice', si.unit_price, 'costPrice', si.cost_price, 'subtotal', si.subtotal
+          ) ORDER BY si.id)
+         FROM sale_items si WHERE si.sale_id = s.id),
+        '[]'::jsonb
+      ) AS items
+    FROM sales s
+    LEFT JOIN customers c ON c.id = s.customer_id
+    ${where}
+    ORDER BY s.created_at DESC
+    LIMIT $${params.length - 1} OFFSET $${params.length}
+  `;
 
-  res.json({
+  const listResult = await query(listQuery, params);
+  const total = listResult.rows.length > 0 ? Number(listResult.rows[0].full_count) : 0;
+
+  const responsePayload = {
     success: true,
     count: listResult.rows.length,
-    total: Number(countResult.rows[0].count),
+    total,
     page: Number(page),
     data: mapRows(listResult.rows),
-  });
+  };
+
+  salesCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 const getSale = asyncHandler(async (req, res) => {
@@ -209,6 +248,7 @@ const createSale = asyncHandler(async (req, res) => {
     throw err;
   }
 
+  clearShopSalesCache(req.shopId);
   return res.status(201).json({ success: true, data: await fetchFullSale(saleId) });
 });
 
@@ -253,6 +293,8 @@ const refundSale = asyncHandler(async (req, res) => {
     await client.query(`UPDATE sales SET status = 'refunded' WHERE id = $1`, [sale.id]);
     return sale.id;
   });
+
+  clearShopSalesCache(req.shopId);
 
   res.json({ success: true, data: await fetchFullSale(saleId) });
 });

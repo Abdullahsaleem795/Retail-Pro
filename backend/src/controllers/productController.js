@@ -11,14 +11,32 @@ const PRODUCT_SELECT = `
     p.cost_price, p.selling_price, p.stock_quantity, p.low_stock_threshold,
     p.expiry_date, p.supplier_id, p.image_url, p.is_active,
     p.created_at, p.updated_at,
-    CASE WHEN c.id IS NOT NULL THEN jsonb_build_object('_id', c.id, 'name', c.name) ELSE NULL END AS category_id
+    CASE WHEN c.id IS NOT NULL THEN jsonb_build_object('_id', c.id, 'name', c.name) ELSE NULL END AS category_id,
+    COUNT(*) OVER() AS full_count
   FROM products p
   LEFT JOIN categories c ON c.id = p.category_id
 `;
 
+const productCache = new Map();
+const CACHE_TTL_MS = 15000;
+
+const clearShopProductCache = (shopId) => {
+  for (const key of productCache.keys()) {
+    if (key.startsWith(`${shopId}:`)) {
+      productCache.delete(key);
+    }
+  }
+};
+
 // GET /api/products?search=&categoryId=&lowStock=true&page=1&limit=20
 const getProducts = asyncHandler(async (req, res) => {
   const { search, categoryId, lowStock, page = 1, limit = 20 } = req.query;
+
+  const cacheKey = `${req.shopId}:${search || ''}:${categoryId || ''}:${lowStock || ''}:${page}:${limit}`;
+  const cached = productCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
 
   const conditions = ['p.shop_id = $1'];
   const params = [req.shopId];
@@ -42,20 +60,20 @@ const getProducts = asyncHandler(async (req, res) => {
   params.push(Number(limit), skip);
   const listQuery = `${PRODUCT_SELECT} ${where} ORDER BY p.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
 
-  const [listResult, countResult] = await Promise.all([
-    query(listQuery, params),
-    query(`SELECT COUNT(*) FROM products p ${where}`, params.slice(0, params.length - 2)),
-  ]);
+  const listResult = await query(listQuery, params);
+  const total = listResult.rows.length > 0 ? Number(listResult.rows[0].full_count) : 0;
 
-  const total = Number(countResult.rows[0].count);
-  res.json({
+  const responsePayload = {
     success: true,
     count: listResult.rows.length,
     total,
     page: Number(page),
-    pages: Math.ceil(total / limit),
+    pages: Math.ceil(total / limit) || 1,
     data: mapRows(listResult.rows),
-  });
+  };
+
+  productCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 const getProductByBarcode = asyncHandler(async (req, res) => {
@@ -100,6 +118,7 @@ const createProduct = asyncHandler(async (req, res) => {
       expiryDate || null, imageUrl || null,
     ]
   );
+  clearShopProductCache(req.shopId);
   res.status(201).json({ success: true, data: mapRow(rows[0]) });
 });
 
@@ -132,6 +151,7 @@ const updateProduct = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Product not found');
   }
+  clearShopProductCache(req.shopId);
   res.json({ success: true, data: mapRow(rows[0]) });
 });
 
@@ -144,6 +164,7 @@ const deleteProduct = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Product not found');
   }
+  clearShopProductCache(req.shopId);
   res.json({ success: true, message: 'Product deleted' });
 });
 

@@ -2,8 +2,25 @@ const asyncHandler = require('express-async-handler');
 const { query } = require('../config/db');
 const { mapRow, mapRows } = require('../utils/sqlMapper');
 
+const expenseCache = new Map();
+const CACHE_TTL_MS = 15000;
+
+const clearShopExpenseCache = (shopId) => {
+  for (const key of expenseCache.keys()) {
+    if (key.startsWith(`${shopId}:`)) {
+      expenseCache.delete(key);
+    }
+  }
+};
+
 const getExpenses = asyncHandler(async (req, res) => {
   const { category, from, to, page = 1, limit = 20 } = req.query;
+
+  const cacheKey = `${req.shopId}:${category || ''}:${from || ''}:${to || ''}:${page}:${limit}`;
+  const cached = expenseCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
 
   const conditions = ['shop_id = $1'];
   const params = [req.shopId];
@@ -25,21 +42,22 @@ const getExpenses = asyncHandler(async (req, res) => {
   const skip = (Number(page) - 1) * Number(limit);
   params.push(Number(limit), skip);
 
-  const [listResult, countResult] = await Promise.all([
-    query(
-      `SELECT * FROM expenses ${where} ORDER BY date DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params
-    ),
-    query(`SELECT COUNT(*) FROM expenses ${where}`, params.slice(0, params.length - 2)),
-  ]);
+  const listResult = await query(
+    `SELECT *, COUNT(*) OVER() AS full_count FROM expenses ${where} ORDER BY date DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+  const total = listResult.rows.length > 0 ? Number(listResult.rows[0].full_count) : 0;
 
-  res.json({
+  const responsePayload = {
     success: true,
     count: listResult.rows.length,
-    total: Number(countResult.rows[0].count),
+    total,
     page: Number(page),
     data: mapRows(listResult.rows),
-  });
+  };
+
+  expenseCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 const createExpense = asyncHandler(async (req, res) => {
@@ -49,6 +67,7 @@ const createExpense = asyncHandler(async (req, res) => {
      VALUES ($1,$2,$3,$4,$5,$6, COALESCE($7, now())) RETURNING *`,
     [req.shopId, category || 'other', title, amount, note, req.userId, date || null]
   );
+  clearShopExpenseCache(req.shopId);
   res.status(201).json({ success: true, data: mapRow(rows[0]) });
 });
 
@@ -67,6 +86,7 @@ const updateExpense = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Expense not found');
   }
+  clearShopExpenseCache(req.shopId);
   res.json({ success: true, data: mapRow(rows[0]) });
 });
 
@@ -79,6 +99,7 @@ const deleteExpense = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Expense not found');
   }
+  clearShopExpenseCache(req.shopId);
   res.json({ success: true, message: 'Expense deleted' });
 });
 

@@ -24,8 +24,25 @@ const PURCHASE_SELECT = `
   JOIN suppliers s ON s.id = p.supplier_id
 `;
 
+const purchaseCache = new Map();
+const CACHE_TTL_MS = 15000;
+
+const clearShopPurchaseCache = (shopId) => {
+  for (const key of purchaseCache.keys()) {
+    if (key.startsWith(`${shopId}:`)) {
+      purchaseCache.delete(key);
+    }
+  }
+};
+
 const getPurchases = asyncHandler(async (req, res) => {
   const { status, supplierId, page = 1, limit = 20 } = req.query;
+
+  const cacheKey = `${req.shopId}:${status || ''}:${supplierId || ''}:${page}:${limit}`;
+  const cached = purchaseCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
 
   const conditions = ['p.shop_id = $1'];
   const params = [req.shopId];
@@ -41,21 +58,42 @@ const getPurchases = asyncHandler(async (req, res) => {
   const skip = (Number(page) - 1) * Number(limit);
   params.push(Number(limit), skip);
 
-  const [listResult, countResult] = await Promise.all([
-    query(
-      `${PURCHASE_SELECT} ${where} ORDER BY p.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
-      params
-    ),
-    query(`SELECT COUNT(*) FROM purchases p ${where}`, params.slice(0, params.length - 2)),
-  ]);
+  const listQuery = `
+    SELECT
+      p.id, p.shop_id, p.total_amount, p.amount_paid, p.status, p.invoice_number,
+      p.created_by, p.created_at, p.updated_at,
+      COUNT(*) OVER() AS full_count,
+      jsonb_build_object('_id', s.id, 'name', s.name, 'phone', s.phone) AS supplier_id,
+      COALESCE(
+        (SELECT jsonb_agg(jsonb_build_object(
+            'productId', jsonb_build_object('_id', pr.id, 'name', pr.name, 'sku', pr.sku),
+            'quantity', pi.quantity,
+            'costPrice', pi.cost_price
+          ) ORDER BY pi.id)
+         FROM purchase_items pi JOIN products pr ON pr.id = pi.product_id
+         WHERE pi.purchase_id = p.id),
+        '[]'::jsonb
+      ) AS items
+    FROM purchases p
+    JOIN suppliers s ON s.id = p.supplier_id
+    ${where}
+    ORDER BY p.created_at DESC
+    LIMIT $${params.length - 1} OFFSET $${params.length}
+  `;
 
-  res.json({
+  const listResult = await query(listQuery, params);
+  const total = listResult.rows.length > 0 ? Number(listResult.rows[0].full_count) : 0;
+
+  const responsePayload = {
     success: true,
     count: listResult.rows.length,
-    total: Number(countResult.rows[0].count),
+    total,
     page: Number(page),
     data: mapRows(listResult.rows),
-  });
+  };
+
+  purchaseCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
 });
 
 const getPurchase = asyncHandler(async (req, res) => {

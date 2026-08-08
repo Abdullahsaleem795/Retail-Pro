@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo, lazy, Suspense } from 'react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { listProducts, getProductByBarcode } from '../../api/products';
@@ -10,6 +10,8 @@ import {
   countQueuedSales,
   flushQueue,
 } from '../../utils/offlineQueue';
+import { playBeep } from '../../utils/beep';
+import { formatPaymentMethod } from '../../utils/format';
 import './POS.css';
 
 // The scanner pulls in a camera/decoding library; keep it out of the POS
@@ -19,6 +21,23 @@ const BarcodeScanner = lazy(() => import('../../components/BarcodeScanner'));
 const PAYMENT_METHODS = ['cash', 'card', 'credit', 'jazzcash', 'easypaisa'];
 
 export default function POS() {
+  const searchInputRef = useRef(null);
+  // Hardware "wedge" scanners (the trigger-gun and dome types) aren't a
+  // detectable connection - to the OS they're indistinguishable from a
+  // keyboard, they just type the barcode + Enter into whatever field has
+  // focus. So instead of a fake "scanner connected" check, the real fix is
+  // making sure this field never loses focus after the actions that would
+  // otherwise steal it (adding a product, finishing a camera scan, or
+  // completing a sale) - the scanner then "just works" with zero clicks.
+  const refocusSearch = () => {
+    // preventScroll matters here: a focused element that's off-screen makes
+    // the browser auto-scroll it into view by default - since this search
+    // box sits at the very top of the page, refocusing it after every
+    // addToCart() was yanking the owner back to the top of a long product
+    // grid on every single tap, regardless of how far down they'd scrolled.
+    requestAnimationFrame(() => searchInputRef.current?.focus({ preventScroll: true }));
+  };
+
   const [search, setSearch] = useState('');
   const [allProducts, setAllProducts] = useState([]);
   const [cart, setCart] = useState([]); // { productId, name, unitPrice, quantity, stockQuantity }
@@ -117,6 +136,7 @@ export default function POS() {
       toast.error('Item is out of stock');
       return;
     }
+    refocusSearch();
 
     setCart((prev) => {
       const existingIndex = prev.findIndex((item) => item.productId === product._id);
@@ -150,6 +170,7 @@ export default function POS() {
     const localMatch = allProducts.find((p) => p.barcode === term || p.sku === term);
     if (localMatch) {
       addToCart(localMatch);
+      playBeep();
       setSearch('');
       return;
     }
@@ -157,6 +178,7 @@ export default function POS() {
     try {
       const res = await getProductByBarcode(term);
       addToCart(res.data);
+      playBeep();
       setSearch('');
     } catch {
       toast.error(`No product matches barcode "${term}"`);
@@ -165,10 +187,12 @@ export default function POS() {
 
   const handleScanned = useCallback(async (barcode) => {
     setScannerOpen(false);
+    refocusSearch();
     // 1. Try local memory first (0ms latency!)
     const localMatch = allProducts.find((p) => p.barcode === barcode || p.sku === barcode);
     if (localMatch) {
       addToCart(localMatch);
+      playBeep();
       toast.success(`Added ${localMatch.name}`);
       return;
     }
@@ -176,6 +200,7 @@ export default function POS() {
     try {
       const res = await getProductByBarcode(barcode);
       addToCart(res.data);
+      playBeep();
       toast.success(`Added ${res.data.name}`);
     } catch {
       toast.error(`No product found for barcode ${barcode}`);
@@ -228,6 +253,7 @@ export default function POS() {
       setCart([]);
       setDiscount('0');
       setCustomerId('');
+      refocusSearch();
     };
 
     try {
@@ -267,6 +293,7 @@ export default function POS() {
       <div className="pos-catalog">
         <div className="pos-search-row">
           <input
+            ref={searchInputRef}
             className="search-input"
             style={{ maxWidth: '100%', marginBottom: 0 }}
             placeholder="Search or scan barcode..."
@@ -279,6 +306,10 @@ export default function POS() {
             Scan
           </button>
         </div>
+        <p className="pos-scanner-hint">
+          Have a USB/Bluetooth barcode scanner? Just scan - it types straight into the box above.
+          No scanner? Tap Scan to use your camera instead.
+        </p>
         <div className="pos-product-grid">
           {filteredProducts.map((p) => (
             <button
@@ -334,7 +365,7 @@ export default function POS() {
               transition={{ duration: 0.15 }}
             >
               <div className="pos-cart-item-info">
-                <span>{item.name}</span>
+                <span title={item.name}>{item.name}</span>
                 <span className="pos-cart-item-price">Rs {item.unitPrice} each</span>
               </div>
               <div className="pos-qty-control">
@@ -368,7 +399,9 @@ export default function POS() {
               <label>Payment Method</label>
               <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
                 {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>{m}</option>
+                  <option key={m} value={m}>
+                    {formatPaymentMethod(m)}
+                  </option>
                 ))}
               </select>
             </div>
@@ -384,7 +417,7 @@ export default function POS() {
             <div className="pos-total-grand"><span>Total</span><span>Rs {total}</span></div>
           </div>
 
-          <button className="btn-primary" onClick={handleCheckout} disabled={checkingOut || cart.length === 0}>
+          <button className="pos-checkout-btn" onClick={handleCheckout} disabled={checkingOut || cart.length === 0}>
             {checkingOut ? 'Processing...' : `Charge Rs ${total}`}
           </button>
         </div>
@@ -392,7 +425,13 @@ export default function POS() {
 
       {scannerOpen && (
         <Suspense fallback={null}>
-          <BarcodeScanner onDetected={handleScanned} onClose={() => setScannerOpen(false)} />
+          <BarcodeScanner
+            onDetected={handleScanned}
+            onClose={() => {
+              setScannerOpen(false);
+              refocusSearch();
+            }}
+          />
         </Suspense>
       )}
     </div>

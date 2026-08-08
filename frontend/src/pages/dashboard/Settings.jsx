@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { getShopSettings, updateShopSettings, requestSubscriptionUpgrade } from '../../api/shop';
+import { getShopSettings, updateShopSettings, requestSubscriptionUpgrade, getPaymentAccounts } from '../../api/shop';
 import { sendLowStockAlert } from '../../api/notifications';
 import { useAuth } from '../../context/useAuth';
 import LanguageSwitch from '../../components/LanguageSwitch';
 import './Inventory.css';
+import './Settings.css';
 
 const BUSINESS_TYPES = ['kiryana', 'general', 'medical', 'wholesale', 'other'];
 
@@ -17,45 +18,43 @@ const PLAN_DETAILS = {
     taglineEn: 'Essential POS & Inventory features for small single-counter stores.',
     taglineUr: 'چھوٹے اسٹورز کے لیے بنیادی پی او ایس اور انوینٹری کی خصوصیات۔',
     benefitsEn: [
-      '⚡ 1 POS Terminal & Billing Counter',
-      '📦 Up to 500 Inventory Products',
-      '👥 Up to 2 Staff Accounts (Cashiers)',
-      '📊 Daily Sales & Expense Tracking Reports',
-      '🧾 Thermal Receipt Printing & Search History',
-      '💬 Standard In-App Customer Management',
+      '1 POS Terminal & Billing Counter',
+      'Up to 500 Inventory Products',
+      'Up to 2 Staff Accounts (Cashiers)',
+      'Daily Sales & Expense Tracking Reports',
+      'Thermal Receipt Printing & Search History',
+      'Standard In-App Customer Management',
     ],
     benefitsUr: [
-      '⚡ 1 پی او ایس ٹرمینل اور بلنگ کاؤنٹر',
-      '📦 500 تک سامان/انوینٹری کی پروڈکٹس',
-      '👥 2 تک اسٹاف اکاؤنٹس (کیشیئر)',
-      '📊 روزانہ کی فروخت اور اخراجات کی رپورٹ',
-      '🧾 تھرمل رسید پرنٹنگ اور ہسٹری سرچ',
-      '💬 عام ان اپپ کسٹمر مینجمنٹ',
+      '1 پی او ایس ٹرمینل اور بلنگ کاؤنٹر',
+      '500 تک سامان/انوینٹری کی پروڈکٹس',
+      '2 تک اسٹاف اکاؤنٹس (کیشیئر)',
+      'روزانہ کی فروخت اور اخراجات کی رپورٹ',
+      'تھرمل رسید پرنٹنگ اور ہسٹری سرچ',
+      'عام ان اپپ کسٹمر مینجمنٹ',
     ],
   },
   pro: {
-    nameEn: 'Pro Plan (🌟 Recommended)',
-    nameUr: 'پرو پلان (🌟 بہترین تجویز)',
+    nameEn: 'Pro Plan',
+    nameUr: 'پرو پلان',
     price: 'Rs 3,500 / month',
     taglineEn: 'Full automation, WhatsApp integration & BI analytics for growing stores.',
     taglineUr: 'بڑھتے ہوئے کاروبار کے لیے مکمل واٹس ایپ آٹومیشن اور ایڈوانسڈ رپورٹس۔',
     benefitsEn: [
-      '✨ Everything included in Basic Plan, PLUS:',
-      '📲 Automated 1-Click WhatsApp Low Stock Alerts & Supplier Reorder Drafts',
-      '👥 Unlimited Staff Accounts (Managers & Cashiers with Custom Permissions)',
-      '📈 Advanced BI Analytics (Dead Stock Finder, Margin Warnings & Profit Insights)',
-      '💬 1-Click WhatsApp Customer Debt (Udhari) Reminders with PDF Receipts',
-      '🧾 Custom Store Logo & Thermal Receipt Header Customization',
-      '⚡ Priority In-App & Email Technical Support',
+      'Everything in Basic, plus:',
+      'Automated WhatsApp Low Stock Alerts & Supplier Reorder Drafts',
+      'Unlimited Staff Accounts (Managers & Cashiers with Custom Permissions)',
+      'Advanced BI Analytics (Dead Stock Finder, Margin Warnings & Profit Insights)',
+      'Custom Store Logo & Thermal Receipt Header Customization',
+      'Priority In-App & Email Technical Support',
     ],
     benefitsUr: [
-      '✨ بنیادی پلان کی تمام خصوصیات شامل ہیں، مزید:',
-      '📲 واٹس ایپ پر آٹو لو اسٹاک الرٹس اور 1-کلک سپلائر آرڈر ڈرافٹس',
-      '👥 لامحدود اسٹاف اکاؤنٹس (منیجر اور کیشیئر کسٹم پرمیشنز کے ساتھ)',
-      '📈 ایڈوانسڈ بزنس رپورٹس (ڈیڈ اسٹاک، منافع اور نقصان وارننگ)',
-      '💬 واٹس ایپ پر کسٹمرز کو ادھاری (کھاتہ) کی یاددہانی اور PDF رسید',
-      '🧾 کسٹم اسٹور لوگو اور رسید پرنٹنگ ڈیزائننگ',
-      '⚡ ترجیحی واٹس ایپ اور ای میل تکنیکی مدد',
+      'بنیادی پلان کی تمام خصوصیات شامل ہیں، مزید:',
+      'واٹس ایپ پر آٹو لو اسٹاک الرٹس اور سپلائر آرڈر ڈرافٹس',
+      'لامحدود اسٹاف اکاؤنٹس (منیجر اور کیشیئر کسٹم پرمیشنز کے ساتھ)',
+      'ایڈوانسڈ بزنس رپورٹس (ڈیڈ اسٹاک، منافع اور نقصان وارننگ)',
+      'کسٹم اسٹور لوگو اور رسید پرنٹنگ ڈیزائننگ',
+      'ترجیحی واٹس ایپ اور ای میل تکنیکی مدد',
     ],
   },
   enterprise: {
@@ -65,20 +64,20 @@ const PLAN_DETAILS = {
     taglineEn: 'Unlimited power for multi-branch retail chains & large supermarkets.',
     taglineUr: 'ملٹی برانچ اسٹورز اور بڑے سپرمارکیٹس کے لیے لا محدود خصوصیات۔',
     benefitsEn: [
-      '✨ Everything included in Pro Plan, PLUS:',
-      '🏢 Multi-Branch & Multi-Counter Inventory Synchronization',
-      '⚡ 24/7 Dedicated Priority Phone & WhatsApp Account Manager Support',
-      '🔄 Custom ERP, Accounting & Payment Gateway Integration',
-      '💾 Automated Hourly Offsite Secure Database Backups',
-      '🎯 Custom Feature Requests & Onsite Staff Setup/Training',
+      'Everything in Pro, plus:',
+      'Multi-Branch & Multi-Counter Inventory Synchronization',
+      '24/7 Dedicated Priority Phone & WhatsApp Account Manager Support',
+      'Custom ERP & Accounting Integration',
+      'Automated Hourly Offsite Secure Database Backups',
+      'Custom Feature Requests & Onsite Staff Setup/Training',
     ],
     benefitsUr: [
-      '✨ پرو پلان کی تمام خصوصیات شامل ہیں، مزید:',
-      '🏢 ملٹی برانچ اور ملٹی کاؤنٹر انوینٹری کی ہم آہنگی (سنک)',
-      '⚡ 24/7 💎 خصوصی فون اور واٹس ایپ اکاؤنٹ منیجر سپورٹ',
-      '🔄 کسٹم ای آر پی، اکاؤنٹنگ اور پیمنٹ گیٹ وے انٹیگریشن',
-      '💾 خودکار گھنٹہ وار ڈیٹا بیس کا محفوظ بیک اپ',
-      '🎯 خصوصی فیچرز کی تیاری اور اسٹاف کی عملی تربیت',
+      'پرو پلان کی تمام خصوصیات شامل ہیں، مزید:',
+      'ملٹی برانچ اور ملٹی کاؤنٹر انوینٹری کی ہم آہنگی (سنک)',
+      '24/7 خصوصی فون اور واٹس ایپ اکاؤنٹ منیجر سپورٹ',
+      'کسٹم ای آر پی اور اکاؤنٹنگ انٹیگریشن',
+      'خودکار گھنٹہ وار ڈیٹا بیس کا محفوظ بیک اپ',
+      'خصوصی فیچرز کی تیاری اور اسٹاف کی عملی تربیت',
     ],
   },
 };
@@ -96,6 +95,7 @@ export default function Settings() {
   const [transactionId, setTransactionId] = useState('');
   const [submittingTrx, setSubmittingTrx] = useState(false);
   const [whatsappUrl, setWhatsappUrl] = useState('');
+  const [paymentAccounts, setPaymentAccounts] = useState(null);
 
   const isOwner = user?.role === 'owner';
 
@@ -103,6 +103,12 @@ export default function Settings() {
     getShopSettings()
       .then((res) => setForm(res.data))
       .catch(() => toast.error('Failed to load shop settings'));
+    // Operator-owned accounts, editable from the platform admin console -
+    // fetched rather than hardcoded so a number change doesn't need a
+    // frontend code change + redeploy.
+    getPaymentAccounts()
+      .then((res) => setPaymentAccounts(res.data))
+      .catch(() => {});
   }, []);
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -133,10 +139,14 @@ export default function Settings() {
     setSendingAlert(true);
     try {
       const res = await sendLowStockAlert();
-      if (res.whatsappUrl) {
-        window.open(res.whatsappUrl, '_blank');
+      if (res.deliveryStatus === 'sent') {
+        toast.success('Low stock alert sent to your WhatsApp');
+      } else {
+        if (res.whatsappUrl) {
+          window.open(res.whatsappUrl, '_blank');
+        }
+        toast.success('Low stock alert generated');
       }
-      toast.success('Low stock alert generated');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to send alert');
     } finally {
@@ -171,7 +181,7 @@ export default function Settings() {
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
         {/* Subscription & Billing Card */}
         <div className="table-wrap" style={{ padding: '1.5rem', marginBottom: '1.25rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <div className="sub-card-head">
             <h2 className="chart-title" style={{ margin: 0 }}>Subscription & Billing</h2>
             <span className={form.subscriptionStatus === 'active' ? 'badge badge-ok' : 'badge badge-warning'}>
               {(form.subscriptionPlan || 'basic').toUpperCase()} — {form.subscriptionStatus || 'Trial'}
@@ -180,160 +190,114 @@ export default function Settings() {
 
           {/* Plan Comparison & Benefits Cards */}
           <div style={{ marginBottom: '1.5rem' }}>
-            <h3 style={{ margin: '0 0 0.85rem', fontSize: '0.95rem', color: '#1e293b' }}>⭐ Select a Plan & Discover Exclusive Benefits</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem' }}>
-              {/* Basic Plan Card */}
+            <p className="sub-section-label">Select a plan</p>
+            <div className="plan-grid">
               <div
-                style={{
-                  background: '#fff',
-                  border: planRequested === 'basic' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: '1.1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  boxShadow: planRequested === 'basic' ? '0 4px 12px rgba(59,130,246,0.15)' : 'none',
-                }}
+                className={`plan-card ${planRequested === 'basic' ? 'is-selected' : ''}`}
                 onClick={() => setPlanRequested('basic')}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>Basic Plan</h4>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#2563eb' }}>Rs 1,500 / mo</span>
+                <div className="plan-card-head">
+                  <h4 className="plan-card-name">Basic</h4>
+                  <span className="plan-card-price">Rs 1,500 / mo</span>
                 </div>
-                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0.4rem 0 0.75rem' }}>Perfect for single-counter stores getting started.</p>
-                <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#334155', lineHeight: '1.6' }}>
-                  <li>⚡ 1 POS Terminal & Checkout Counter</li>
-                  <li>📦 Up to 500 Inventory Items</li>
-                  <li>👥 Up to 2 Staff Accounts (Cashiers)</li>
-                  <li>📊 Daily Sales & Expense Tracking</li>
-                  <li>🧾 Thermal Receipt Printing</li>
+                <p className="plan-card-tagline">Perfect for single-counter stores getting started.</p>
+                <ul className="plan-card-list">
+                  <li>1 POS Terminal & Checkout Counter</li>
+                  <li>Up to 500 Inventory Items</li>
+                  <li>Up to 2 Staff Accounts (Cashiers)</li>
+                  <li>Daily Sales & Expense Tracking</li>
+                  <li>Thermal Receipt Printing</li>
                 </ul>
               </div>
 
-              {/* Pro Plan Card (Recommended) */}
               <div
-                style={{
-                  background: '#f0fdf4',
-                  border: planRequested === 'pro' ? '2px solid #16a34a' : '1px solid #bbf7d0',
-                  borderRadius: 10,
-                  padding: '1.1rem',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  transition: 'all 0.2s',
-                  boxShadow: planRequested === 'pro' ? '0 4px 14px rgba(22,163,74,0.2)' : 'none',
-                }}
+                className={`plan-card ${planRequested === 'pro' ? 'is-selected' : ''}`}
                 onClick={() => setPlanRequested('pro')}
               >
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -10,
-                    right: 12,
-                    background: '#16a34a',
-                    color: '#fff',
-                    fontSize: '0.7rem',
-                    fontWeight: 'bold',
-                    padding: '2px 8px',
-                    borderRadius: 12,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  🌟 Recommended
-                </span>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4 style={{ margin: 0, fontSize: '1rem', color: '#14532d' }}>Pro Plan</h4>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#16a34a' }}>Rs 3,500 / mo</span>
+                <span className="plan-badge-recommended">Recommended</span>
+                <div className="plan-card-head">
+                  <h4 className="plan-card-name">Pro</h4>
+                  <span className="plan-card-price">Rs 3,500 / mo</span>
                 </div>
-                <p style={{ fontSize: '0.8rem', color: '#15803d', margin: '0.4rem 0 0.75rem' }}>Full automation & growth for busy retail stores.</p>
-                <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#166534', lineHeight: '1.6' }}>
-                  <li>✨ <strong>Everything in Basic, PLUS:</strong></li>
-                  <li>💬 <strong>Automated 1-Click WhatsApp Supplier Orders & Low Stock Alerts</strong></li>
-                  <li>👥 <strong>Unlimited Staff Accounts (Managers & Cashiers)</strong></li>
-                  <li>📈 <strong>Advanced BI Analytics (Dead Stock & Margin Warnings)</strong></li>
-                  <li>📲 <strong>1-Click WhatsApp Customer Debt Reminders</strong></li>
+                <p className="plan-card-tagline">Full automation & growth for busy retail stores.</p>
+                <ul className="plan-card-list">
+                  <li><strong>Everything in Basic, plus:</strong></li>
+                  <li>Automated WhatsApp Supplier Orders & Low Stock Alerts</li>
+                  <li>Unlimited Staff Accounts (Managers & Cashiers)</li>
+                  <li>Advanced BI Analytics (Dead Stock & Margin Warnings)</li>
                 </ul>
               </div>
 
-              {/* Enterprise Plan Card */}
               <div
-                style={{
-                  background: '#fff',
-                  border: planRequested === 'enterprise' ? '2px solid #8b5cf6' : '1px solid #e2e8f0',
-                  borderRadius: 10,
-                  padding: '1.1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  boxShadow: planRequested === 'enterprise' ? '0 4px 12px rgba(139,92,246,0.15)' : 'none',
-                }}
+                className={`plan-card ${planRequested === 'enterprise' ? 'is-selected' : ''}`}
                 onClick={() => setPlanRequested('enterprise')}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>Enterprise Plan</h4>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#7c3aed' }}>Rs 7,500 / mo</span>
+                <div className="plan-card-head">
+                  <h4 className="plan-card-name">Enterprise</h4>
+                  <span className="plan-card-price">Rs 7,500 / mo</span>
                 </div>
-                <p style={{ fontSize: '0.8rem', color: '#64748b', margin: '0.4rem 0 0.75rem' }}>For multi-branch chains & high-volume marts.</p>
-                <ul style={{ paddingLeft: '1.1rem', margin: 0, fontSize: '0.8rem', color: '#334155', lineHeight: '1.6' }}>
-                  <li>✨ <strong>Everything in Pro, PLUS:</strong></li>
-                  <li>🏢 <strong>Multi-Branch & Multi-Counter Sync</strong></li>
-                  <li>⚡ <strong>Dedicated Priority Phone & WhatsApp Support</strong></li>
-                  <li>🔄 <strong>Custom ERP & Accounting System Integration</strong></li>
-                  <li>💾 <strong>Automated Hourly Offsite Database Backups</strong></li>
+                <p className="plan-card-tagline">For multi-branch chains & high-volume marts.</p>
+                <ul className="plan-card-list">
+                  <li><strong>Everything in Pro, plus:</strong></li>
+                  <li>Multi-Branch & Multi-Counter Sync</li>
+                  <li>Dedicated Priority Phone & WhatsApp Support</li>
+                  <li>Custom ERP & Accounting Integration</li>
+                  <li>Automated Hourly Offsite Database Backups</li>
                 </ul>
               </div>
             </div>
           </div>
 
-          <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: 8, marginBottom: '1.25rem', border: '1px solid #e2e8f0' }}>
-            <h3 style={{ margin: '0 0 0.5rem', fontSize: '0.95rem', color: '#1e293b' }}>💳 How to Pay & Upgrade (Pakistan Local Payment Accounts)</h3>
-            <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#64748b' }}>
-              Send your monthly subscription fee to any of the official accounts below, then enter your Transaction TRX ID to activate:
+          <div className="payment-box">
+            <h3 className="sub-section-label" style={{ marginBottom: '0.4rem' }}>How to pay & upgrade (Pakistan local payment accounts)</h3>
+            <p>
+              Send your monthly subscription fee to one of the accounts below, then enter your transaction ID to request activation:
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.75rem', fontSize: '0.85rem' }}>
-              <div style={{ background: '#fff', padding: '0.75rem', borderRadius: 6, border: '1px solid #cbd5e1' }}>
-                <strong style={{ color: '#15803d' }}>🟢 JazzCash / EasyPaisa</strong>
-                <div>Account Title: <strong>Abdullah Saleem</strong></div>
-                <div>Account Number: <strong>03056779779</strong></div>
-              </div>
-              <div style={{ background: '#fff', padding: '0.75rem', borderRadius: 6, border: '1px solid #cbd5e1' }}>
-                <strong style={{ color: '#1e40af' }}>🏦 Bank Transfer (Meezan / HBL)</strong>
-                <div>Account Title: <strong>RetailPro Software</strong></div>
-                <div>IBAN: <strong>PK89MEZN0001092837492019</strong></div>
-              </div>
+            <div className="payment-grid">
+              {paymentAccounts?.jazzcashNumber && (
+                <div className="payment-account">
+                  <span className="payment-account-title">JazzCash</span>
+                  <div>Account Title: <strong>{paymentAccounts.jazzcashTitle}</strong></div>
+                  <div>Account Number: <strong>{paymentAccounts.jazzcashNumber}</strong></div>
+                </div>
+              )}
+              {paymentAccounts?.easypaisaNumber && (
+                <div className="payment-account">
+                  <span className="payment-account-title">EasyPaisa</span>
+                  <div>Account Title: <strong>{paymentAccounts.easypaisaTitle}</strong></div>
+                  <div>Account Number: <strong>{paymentAccounts.easypaisaNumber}</strong></div>
+                </div>
+              )}
+              {paymentAccounts?.bankIban && (
+                <div className="payment-account">
+                  <span className="payment-account-title">Bank Transfer{paymentAccounts.bankName ? ` (${paymentAccounts.bankName})` : ''}</span>
+                  <div>Account Title: <strong>{paymentAccounts.bankTitle}</strong></div>
+                  <div>IBAN: <strong>{paymentAccounts.bankIban}</strong></div>
+                </div>
+              )}
+              {paymentAccounts && !paymentAccounts.jazzcashNumber && !paymentAccounts.easypaisaNumber && !paymentAccounts.bankIban && (
+                <p style={{ margin: 0, gridColumn: '1 / -1' }}>No payment accounts configured yet - contact the shop to arrange payment.</p>
+              )}
             </div>
           </div>
 
           {isOwner && (
-            <form onSubmit={handleUpgradeSubmit} style={{ borderTop: '1px solid #f1f5f9', paddingTop: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a' }}>Submit Payment & Request Upgrade</h4>
-                <div style={{ display: 'flex', gap: '0.25rem', background: '#e2e8f0', padding: 2, borderRadius: 6 }}>
+            <form onSubmit={handleUpgradeSubmit} style={{ borderTop: '1px solid var(--color-border)', paddingTop: '1.25rem' }}>
+              <div className="sub-card-head" style={{ marginBottom: '1.1rem' }}>
+                <h4 style={{ margin: 0, fontSize: 'var(--fs-body-sm)', fontWeight: 'var(--fw-semibold)', color: 'var(--color-text-primary)' }}>
+                  Submit payment & request upgrade
+                </h4>
+                <div className="lang-toggle">
                   <button
                     type="button"
-                    style={{
-                      padding: '2px 8px',
-                      fontSize: '0.75rem',
-                      borderRadius: 4,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: planLang === 'en' ? '#2563eb' : 'transparent',
-                      color: planLang === 'en' ? '#fff' : '#475569',
-                      fontWeight: planLang === 'en' ? 'bold' : 'normal',
-                    }}
+                    className={planLang === 'en' ? 'is-active' : ''}
                     onClick={() => setPlanLang('en')}
                   >
                     English
                   </button>
                   <button
                     type="button"
-                    style={{
-                      padding: '2px 8px',
-                      fontSize: '0.75rem',
-                      borderRadius: 4,
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: planLang === 'ur' ? '#2563eb' : 'transparent',
-                      color: planLang === 'ur' ? '#fff' : '#475569',
-                      fontWeight: planLang === 'ur' ? 'bold' : 'normal',
-                    }}
+                    className={planLang === 'ur' ? 'is-active' : ''}
                     onClick={() => setPlanLang('ur')}
                   >
                     اردو
@@ -371,28 +335,19 @@ export default function Settings() {
 
               {/* Dynamic Selected Plan Benefits Box */}
               {PLAN_DETAILS[planRequested] && (
-                <div
-                  style={{
-                    background: planRequested === 'pro' ? '#f0fdf4' : planRequested === 'enterprise' ? '#faf5ff' : '#eff6ff',
-                    border: planRequested === 'pro' ? '1px solid #bbf7d0' : planRequested === 'enterprise' ? '1px solid #e9d5ff' : '1px solid #bfdbfe',
-                    borderRadius: 8,
-                    padding: '0.9rem 1.1rem',
-                    margin: '1rem 0',
-                    direction: planLang === 'ur' ? 'rtl' : 'ltr',
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem' }}>
-                    <strong style={{ color: planRequested === 'pro' ? '#15803d' : planRequested === 'enterprise' ? '#6b21a8' : '#1d4ed8', fontSize: '0.9rem' }}>
-                      ✨ {planLang === 'ur' ? PLAN_DETAILS[planRequested].nameUr : PLAN_DETAILS[planRequested].nameEn} ({PLAN_DETAILS[planRequested].price})
-                    </strong>
-                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#64748b' }}>
+                <div className="benefits-box" dir={planLang === 'ur' ? 'rtl' : 'ltr'}>
+                  <div className="benefits-box-head">
+                    <span className="benefits-box-plan">
+                      {planLang === 'ur' ? PLAN_DETAILS[planRequested].nameUr : PLAN_DETAILS[planRequested].nameEn} — {PLAN_DETAILS[planRequested].price}
+                    </span>
+                    <span className="benefits-box-kicker">
                       {planLang === 'ur' ? 'پلان کی خصوصیات' : 'Included Benefits'}
                     </span>
                   </div>
-                  <p style={{ fontSize: '0.8rem', color: '#475569', margin: '0 0 0.5rem' }}>
+                  <p className="benefits-box-tagline">
                     {planLang === 'ur' ? PLAN_DETAILS[planRequested].taglineUr : PLAN_DETAILS[planRequested].taglineEn}
                   </p>
-                  <ul style={{ margin: 0, paddingRight: planLang === 'ur' ? '1.2rem' : 0, paddingLeft: planLang === 'en' ? '1.2rem' : 0, fontSize: '0.82rem', color: '#1e293b', lineHeight: '1.6' }}>
+                  <ul className="benefits-box-list">
                     {(planLang === 'ur' ? PLAN_DETAILS[planRequested].benefitsUr : PLAN_DETAILS[planRequested].benefitsEn).map((b, idx) => (
                       <li key={idx}>{b}</li>
                     ))}
@@ -406,11 +361,10 @@ export default function Settings() {
                 {whatsappUrl && (
                   <button
                     type="button"
-                    className="btn-secondary"
-                    style={{ background: '#25d366', color: '#fff', border: 'none' }}
+                    className="btn-secondary btn-whatsapp"
                     onClick={() => window.open(whatsappUrl, '_blank')}
                   >
-                    📲 Send Payment Screenshot via WhatsApp
+                    Send Payment Screenshot via WhatsApp
                   </button>
                 )}
               </div>

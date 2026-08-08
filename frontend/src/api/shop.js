@@ -8,4 +8,6 @@ export const updateUser = (id, payload) => apiClient.put(`/shop/users/${id}`, pa
 export const deleteUser = (id) => apiClient.delete(`/shop/users/${id}`).then((r) => r.data);
 export const getGrantablePermissions = () => apiClient.get('/shop/permissions').then((r) => r.data);
 export const requestSubscriptionUpgrade = (payload) => apiClient.post('/shop/subscription/request-upgrade', payload).then((r) => r.data);
-export const activateSubscription = (payload) => apiClient.post('/shop/subscription/activate', payload).then((r) => r.data);
+// Activation is admin-only now (see /api/admin/*, frontend/src/pages/AdminConsole.jsx) -
+// a shop owner can no longer self-activate their own paid plan.
+export const getPaymentAccounts = () => apiClient.get('/shop/payment-accounts').then((r) => r.data);

@@ -1,12 +1,12 @@
 .dash-shell {
   display: flex;
   min-height: 100vh;
-  background: #f4f6f8;
+  background: var(--color-bg-page);
 }
 
 .dash-sidebar {
   width: 230px;
-  background: #101828;
+  background: #4b5563;
   color: #fff;
   display: flex;
   flex-direction: column;
@@ -15,34 +15,36 @@
 }
 
 .dash-brand {
-  font-size: 1.25rem;
-  font-weight: 700;
-  padding: 0 1.5rem 1.5rem;
-  color: #22c55e;
+  font-size: var(--fs-h5);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-heading-md);
+  padding: 0 var(--space-6) var(--space-6);
+  color: var(--color-brand);
 }
 
 .dash-sidebar nav {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: var(--space-1);
 }
 
 .dash-nav-link {
-  padding: 0.65rem 1.5rem;
-  color: #cbd5e1;
+  padding: var(--space-3) var(--space-6);
+  color: #e5e7eb;
   text-decoration: none;
-  font-size: 0.92rem;
-  transition: background 0.15s ease, color 0.15s ease;
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  transition: background var(--transition-fast), color var(--transition-fast);
   border-left: 3px solid transparent;
 }
 
 .dash-nav-link:hover {
-  background: #1e293b;
+  background: #374151;
   color: #fff;
 }
 
 .dash-nav-link.active {
-  background: #1e293b;
+  background: #374151;
   color: #22c55e;
   border-left-color: #22c55e;
 }
@@ -67,58 +69,60 @@
 
 .dash-topbar {
   height: 64px;
-  background: #fff;
-  border-bottom: 1px solid #e5e7eb;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 1.5rem;
+  padding: 0 var(--space-6);
 }
 
 .dash-shop-name {
-  font-weight: 600;
-  color: #101828;
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
 }
 
 .dash-user {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  font-size: 0.9rem;
-  color: #475569;
+  gap: var(--space-4);
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-secondary);
 }
 
 .dash-user-link {
-  color: #475569;
+  color: var(--color-text-secondary);
   text-decoration: none;
-  padding: 0.25rem 0.4rem;
-  border-radius: 6px;
-  transition: background 0.15s ease;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
 }
 
 .dash-user-link:hover {
-  background: #f1f5f9;
-  color: #101828;
+  background: var(--color-bg-subtle);
+  color: var(--color-text-primary);
 }
 
 .btn-logout {
-  background: #ef4444;
-  color: #fff;
+  background: var(--color-danger);
+  color: var(--color-brand-contrast);
   border: none;
-  padding: 0.4rem 0.9rem;
-  border-radius: 6px;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.85rem;
-  transition: background 0.15s ease;
+  font-family: var(--font-family);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  transition: background var(--transition-fast);
 }
 
 .btn-logout:hover {
-  background: #dc2626;
+  background: #b91c1c;
 }
 
 .dash-content {
   flex: 1;
-  padding: 1.75rem;
+  padding: var(--space-7);
   overflow-y: auto;
 }
 
@@ -130,8 +134,44 @@
     font-size: 0;
   }
   .dash-nav-link {
-    padding: 0.65rem 0.75rem;
+    padding: var(--space-3) var(--space-2);
     text-align: center;
     font-size: 0.7rem;
+  }
+
+  /* The topbar was never built to shrink - .dash-shop-name plus a full
+     "Name (role)" link plus the logout button simply don't fit once the
+     sidebar eats 72px on a phone-width screen, so it silently overflowed
+     and clipped the logout button off-screen. Drop the shop name (already
+     redundant with the page itself) and tighten spacing first. */
+  .dash-topbar {
+    padding: 0 var(--space-4);
+  }
+  .dash-shop-name {
+    display: none;
+  }
+  .dash-user {
+    gap: var(--space-2);
+  }
+  .dash-user-link {
+    max-width: 90px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .btn-logout {
+    padding: var(--space-2) var(--space-3);
+  }
+  .dash-content {
+    padding: var(--space-4);
+  }
+}
+
+@media (max-width: 480px) {
+  /* Below this, even the truncated name+role link is more than a phone
+     screen can spare next to the bell, language toggle, and logout button -
+     drop it entirely rather than let any of those get squeezed further. */
+  .dash-user-link {
+    display: none;
   }
 }

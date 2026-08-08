@@ -9,3 +9,6 @@ export const adjustStock = (id, quantityChange, reason) =>
   apiClient.patch(`/products/${id}/stock`, { quantityChange, reason }).then((r) => r.data);
 export const getProductByBarcode = (barcode) =>
   apiClient.get(`/products/barcode/${barcode}`).then((r) => r.data);
+export const getExpiryAlerts = () => apiClient.get('/products/expiry-alerts').then((r) => r.data);
+export const bulkImportProducts = (products) =>
+  apiClient.post('/products/bulk-import', { products }).then((r) => r.data);

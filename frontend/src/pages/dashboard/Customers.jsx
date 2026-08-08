@@ -106,7 +106,7 @@ export default function Customers() {
             ) : (
               customers.map((c) => (
                 <tr key={c._id}>
-                  <td>{c.name}</td>
+                  <td className="truncate" title={c.name}>{c.name}</td>
                   <td>{c.phone || '-'}</td>
                   <td>
                     <span className={c.creditBalance > 0 ? 'badge badge-warning' : 'badge badge-ok'}>

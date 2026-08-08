@@ -115,9 +115,9 @@ export default function Categories() {
             ) : (
               categories.map((c) => (
                 <tr key={c._id}>
-                  <td>{c.name}</td>
+                  <td className="truncate" title={c.name}>{c.name}</td>
                   <td>{c.nameUrdu || '—'}</td>
-                  <td>{c.description || '—'}</td>
+                  <td className="truncate" title={c.description}>{c.description || '—'}</td>
                   <td><span className="badge badge-ok">{counts[c._id] || 0}</span></td>
                   {canManage && (
                     <td className="table-actions">

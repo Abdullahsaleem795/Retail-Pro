@@ -71,7 +71,9 @@ export default function Suppliers() {
   const handleWhatsAppOrder = async (supplier) => {
     try {
       const res = await sendSupplierOrderDraft(supplier._id);
-      if (res.whatsappUrl) {
+      if (res.deliveryStatus === 'sent') {
+        toast.success('Order sent to supplier on WhatsApp');
+      } else if (res.whatsappUrl) {
         window.open(res.whatsappUrl, '_blank');
         toast.success('Opened WhatsApp draft');
       } else {
@@ -123,8 +125,8 @@ export default function Suppliers() {
             ) : (
               suppliers.map((s) => (
                 <tr key={s._id}>
-                  <td>{s.name}</td>
-                  <td>{s.contactPerson || '-'}</td>
+                  <td className="truncate" title={s.name}>{s.name}</td>
+                  <td className="truncate" title={s.contactPerson}>{s.contactPerson || '-'}</td>
                   <td>{s.phone}</td>
                   <td>
                     <span className={s.balance > 0 ? 'badge badge-warning' : 'badge badge-ok'}>

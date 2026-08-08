@@ -1,0 +1,22 @@
+.expiry-section {
+  margin-bottom: 1.75rem;
+}
+
+.expiry-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text-primary, #101828);
+  margin: 0 0 0.6rem;
+}
+
+.expiry-section-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: #64748b;
+  border-radius: 999px;
+  padding: 0.05rem 0.55rem;
+}

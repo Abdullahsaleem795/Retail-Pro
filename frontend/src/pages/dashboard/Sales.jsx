@@ -3,16 +3,19 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { listSales, refundSale, downloadReceipt } from '../../api/sales';
 import { useAuth } from '../../context/useAuth';
-import { formatCurrency, formatDateTime } from '../../utils/format';
+import { formatCurrency, formatDateTime, formatPaymentMethod, capitalize } from '../../utils/format';
+import ThermalPrintButton from '../../components/ThermalPrintButton';
+import ConfirmModal from '../../components/ConfirmModal';
 import './Inventory.css';
 
 export default function Sales() {
-  const { user } = useAuth();
+  const { user, shop } = useAuth();
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [range, setRange] = useState({ from: '', to: '' });
   const [downloading, setDownloading] = useState(false);
+  const [refunding, setRefunding] = useState(null);
 
   const canRefund = user?.role === 'owner' || user?.role === 'manager';
 
@@ -36,12 +39,13 @@ export default function Sales() {
     fetchSales();
   }, [fetchSales]);
 
-  const handleRefund = async (sale) => {
-    if (!window.confirm(`Refund receipt ${sale.receiptNumber}? Stock will be returned to inventory.`)) return;
+  const handleRefundConfirm = async () => {
+    if (!refunding) return;
     try {
-      await refundSale(sale._id);
+      await refundSale(refunding._id);
       toast.success('Sale refunded');
       setSelected(null);
+      setRefunding(null);
       fetchSales();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Refund failed');
@@ -69,7 +73,7 @@ export default function Sales() {
 
   const statusBadge = (status) => {
     const map = { completed: 'badge-ok', refunded: 'badge-warning', voided: 'badge-warning' };
-    return <span className={`badge ${map[status] || 'badge-ok'}`}>{status}</span>;
+    return <span className={`badge ${map[status] || 'badge-ok'}`}>{capitalize(status)}</span>;
   };
 
   return (
@@ -116,15 +120,15 @@ export default function Sales() {
                 <tr key={s._id}>
                   <td>{s.receiptNumber}</td>
                   <td>{formatDateTime(s.createdAt)}</td>
-                  <td>{s.customerId?.name || 'Walk-in'}</td>
+                  <td className="truncate" title={s.customerId?.name}>{s.customerId?.name || 'Walk-in'}</td>
                   <td>{s.items.length}</td>
-                  <td>{s.paymentMethod}</td>
+                  <td>{formatPaymentMethod(s.paymentMethod)}</td>
                   <td>{formatCurrency(s.totalAmount)}</td>
                   <td>{statusBadge(s.status)}</td>
                   <td className="table-actions">
                     <button className="btn-link" onClick={() => setSelected(s)}>View</button>
                     {canRefund && s.status === 'completed' && (
-                      <button className="btn-link btn-link-danger" onClick={() => handleRefund(s)}>
+                      <button className="btn-link btn-link-danger" onClick={() => setRefunding(s)}>
                         Refund
                       </button>
                     )}
@@ -174,8 +178,14 @@ export default function Sales() {
               <div className="pos-total-grand"><span>Total</span><span>{formatCurrency(selected.totalAmount)}</span></div>
             </div>
 
-            <div className="modal-actions">
+            <div className="modal-actions" style={{ flexWrap: 'wrap' }}>
               <button className="btn-secondary" onClick={() => setSelected(null)}>Close</button>
+              {canRefund && selected.status === 'completed' && (
+                <button className="btn-danger" onClick={() => setRefunding(selected)}>
+                  Refund
+                </button>
+              )}
+              <ThermalPrintButton sale={selected} shop={shop} />
               <button
                 className="btn-primary"
                 style={{ flex: 1, marginTop: 0 }}
@@ -187,6 +197,16 @@ export default function Sales() {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {refunding && (
+        <ConfirmModal
+          title="Refund sale"
+          message={`Refund receipt ${refunding.receiptNumber}? Stock will be returned to inventory.`}
+          confirmText="Refund Sale"
+          onConfirm={handleRefundConfirm}
+          onClose={() => setRefunding(null)}
+        />
       )}
     </div>
   );

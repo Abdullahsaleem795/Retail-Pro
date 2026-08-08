@@ -11,21 +11,10 @@ import {
 import { useAuth } from '../../context/useAuth';
 import { formatDateTime } from '../../utils/format';
 import ConfirmModal from '../../components/ConfirmModal';
+import { PERMISSION_LABELS } from '../../utils/permissionLabels';
 import './Inventory.css';
 
 const ROLES = ['cashier', 'manager'];
-
-// Human labels for the permission slugs the API returns
-const PERMISSION_LABELS = {
-  'product:manage': 'Manage products',
-  'category:manage': 'Manage categories',
-  'supplier:manage': 'Manage suppliers',
-  'purchase:manage': 'Manage purchases',
-  'expense:manage': 'Record expenses',
-  'sale:refund': 'Refund sales',
-  'report:view': 'View reports',
-  'notification:send': 'Send WhatsApp alerts',
-};
 
 export default function Staff() {
   const { user } = useAuth();
@@ -53,8 +42,12 @@ export default function Staff() {
     fetchUsers();
     getGrantablePermissions()
       .then((res) => {
-        setGrantable(res.grantablePermissions || []);
-        setRoleDefaults(res.roleDefaults || {});
+        // Backend shape is { success, data: { grantable, roleDefaults } } -
+        // this was reading res.grantablePermissions/res.roleDefaults directly,
+        // which don't exist, so the permission checkboxes below were always
+        // empty and no owner could ever grant a custom permission to staff.
+        setGrantable(res.data?.grantable || []);
+        setRoleDefaults(res.data?.roleDefaults || {});
       })
       .catch(() => toast.error('Failed to load permission definitions'));
   }, [fetchUsers]);
@@ -142,8 +135,8 @@ export default function Staff() {
                 const isOwner = u.role === 'owner';
                 return (
                   <tr key={u._id}>
-                    <td>{u.name}{isSelf && ' (you)'}</td>
-                    <td>{u.email}</td>
+                    <td className="truncate" title={u.name}>{u.name}{isSelf && ' (you)'}</td>
+                    <td className="truncate" title={u.email}>{u.email}</td>
                     <td><span className="badge badge-ok">{u.role}</span></td>
                     <td>
                       {isOwner ? (

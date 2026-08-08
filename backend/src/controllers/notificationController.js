@@ -62,6 +62,19 @@ const markAllAsRead = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'All notifications marked as read' });
 });
 
+const deleteNotification = asyncHandler(async (req, res) => {
+  const { rows } = await query('DELETE FROM notifications WHERE id = $1 AND shop_id = $2 RETURNING id', [
+    req.params.id,
+    req.shopId,
+  ]);
+  if (rows.length === 0) {
+    res.status(404);
+    throw new Error('Notification not found');
+  }
+  clearShopNotificationCache(req.shopId);
+  res.json({ success: true, message: 'Notification deleted' });
+});
+
 // POST /api/notifications/send-low-stock
 // On-demand trigger so the shopkeeper can push the alert to their own WhatsApp
 // without waiting for the nightly cron.
@@ -155,4 +168,11 @@ const sendSupplierOrderDraft = asyncHandler(async (req, res) => {
   res.json({ success: true, deliveryStatus, message, whatsappUrl, items: orderItems });
 });
 
-module.exports = { getNotifications, markAsRead, markAllAsRead, sendLowStockAlert, sendSupplierOrderDraft };
+module.exports = {
+  getNotifications,
+  markAsRead,
+  markAllAsRead,
+  deleteNotification,
+  sendLowStockAlert,
+  sendSupplierOrderDraft,
+};

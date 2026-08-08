@@ -122,6 +122,23 @@ const createPurchase = asyncHandler(async (req, res) => {
     throw new Error('Supplier not found');
   }
 
+  // Every item's productId must belong to this shop - without this check a
+  // caller could reference another tenant's product UUID and have its name/
+  // sku disclosed back via this purchase's own response and later GET calls
+  // (PURCHASE_SELECT joins products with no shop_id filter, trusting this
+  // check to have already scoped it). markReceived's stock UPDATE is itself
+  // shop_id-scoped so a foreign product's stock can't actually be mutated,
+  // but the cross-tenant disclosure is real.
+  const productIds = [...new Set(items.map((item) => item.productId))];
+  const productCheck = await query('SELECT id FROM products WHERE id = ANY($1) AND shop_id = $2', [
+    productIds,
+    req.shopId,
+  ]);
+  if (productCheck.rows.length !== productIds.length) {
+    res.status(404);
+    throw new Error('One or more products not found');
+  }
+
   const totalAmount = items.reduce((sum, item) => sum + item.quantity * item.costPrice, 0);
 
   const purchase = await withTransaction(async (client) => {

@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { to: '/dashboard', key: 'dashboard', end: true, permission: null, prefetch: () => import('../pages/dashboard/DashboardHome'), api: '/api/reports/dashboard-overview' },
   { to: '/dashboard/pos', key: 'pos', permission: null, prefetch: () => import('../pages/dashboard/POS'), api: '/api/products?limit=50' },
   { to: '/dashboard/inventory', key: 'inventory', permission: null, prefetch: () => import('../pages/dashboard/Inventory'), api: '/api/products?limit=50' },
+  { to: '/dashboard/expiry-alerts', key: 'expiryAlerts', permission: null, prefetch: () => import('../pages/dashboard/ExpiryAlerts'), api: '/api/products/expiry-alerts' },
   { to: '/dashboard/categories', key: 'categories', permission: null, prefetch: () => import('../pages/dashboard/Categories'), api: '/api/categories' },
   { to: '/dashboard/sales', key: 'sales', permission: null, prefetch: () => import('../pages/dashboard/Sales'), api: '/api/sales?limit=50' },
   { to: '/dashboard/purchases', key: 'purchases', permission: 'purchase:manage', prefetch: () => import('../pages/dashboard/Purchases'), api: '/api/purchases?limit=50' },
@@ -20,6 +21,7 @@ const NAV_ITEMS = [
   { to: '/dashboard/customers', key: 'customers', permission: null, prefetch: () => import('../pages/dashboard/Customers'), api: '/api/customers' },
   { to: '/dashboard/expenses', key: 'expenses', permission: 'expense:manage', prefetch: () => import('../pages/dashboard/Expenses'), api: '/api/expenses?limit=50' },
   { to: '/dashboard/reports', key: 'reports', permission: 'report:view', prefetch: () => import('../pages/dashboard/Reports'), api: '/api/reports/dashboard-overview' },
+  { to: '/dashboard/branches', key: 'branches', permission: 'branch:manage', prefetch: () => import('../pages/dashboard/Branches'), api: '/api/branches' },
   { to: '/dashboard/staff', key: 'staff', permission: 'staff:manage', prefetch: () => import('../pages/dashboard/Staff') },
   { to: '/dashboard/settings', key: 'settings', permission: 'shop:settings', prefetch: () => import('../pages/dashboard/Settings') },
 ];

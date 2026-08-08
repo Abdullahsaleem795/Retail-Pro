@@ -1,23 +1,12 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { updateProfile, changePassword } from '../../api/client';
+import { updateProfile, changePassword, setPin as setPinApi, removePin as removePinApi } from '../../api/client';
 import { useAuth } from '../../context/useAuth';
+import { PERMISSION_LABELS } from '../../utils/permissionLabels';
+import { forgetUser } from '../../utils/quickSwitch';
 import './Inventory.css';
 import './DashboardHome.css';
-
-const PERMISSION_LABELS = {
-  'product:manage': 'Manage products',
-  'category:manage': 'Manage categories',
-  'supplier:manage': 'Manage suppliers',
-  'purchase:manage': 'Manage purchases',
-  'expense:manage': 'Record expenses',
-  'sale:refund': 'Refund sales',
-  'report:view': 'View reports',
-  'staff:manage': 'Manage staff',
-  'shop:settings': 'Change shop settings',
-  'notification:send': 'Send WhatsApp alerts',
-};
 
 export default function Profile() {
   const { user, permissions, refreshUser } = useAuth();
@@ -26,6 +15,11 @@ export default function Profile() {
 
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [savingPw, setSavingPw] = useState(false);
+
+  const [pinForm, setPinForm] = useState({ currentPassword: '', pin: '', confirmPin: '' });
+  const [pinEditing, setPinEditing] = useState(false);
+  const [savingPin, setSavingPin] = useState(false);
+  const [removingPin, setRemovingPin] = useState(false);
 
   const handleDetailsSubmit = async (e) => {
     e.preventDefault();
@@ -56,6 +50,44 @@ export default function Profile() {
       toast.error(err.response?.data?.message || 'Could not change password');
     } finally {
       setSavingPw(false);
+    }
+  };
+
+  const handlePinSubmit = async (e) => {
+    e.preventDefault();
+    if (!/^\d{4,6}$/.test(pinForm.pin)) {
+      toast.error('PIN must be 4 to 6 digits');
+      return;
+    }
+    if (pinForm.pin !== pinForm.confirmPin) {
+      toast.error('PINs do not match');
+      return;
+    }
+    setSavingPin(true);
+    try {
+      await setPinApi(pinForm.currentPassword, pinForm.pin);
+      toast.success('PIN set up - you can now quick-switch on this device');
+      setPinForm({ currentPassword: '', pin: '', confirmPin: '' });
+      setPinEditing(false);
+      refreshUser?.();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not set PIN');
+    } finally {
+      setSavingPin(false);
+    }
+  };
+
+  const handleRemovePin = async () => {
+    setRemovingPin(true);
+    try {
+      await removePinApi();
+      if (user?.id) forgetUser(user.id);
+      toast.success('PIN removed');
+      refreshUser?.();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not remove PIN');
+    } finally {
+      setRemovingPin(false);
     }
   };
 
@@ -137,6 +169,75 @@ export default function Profile() {
             {savingPw ? 'Updating...' : 'Change Password'}
           </button>
         </form>
+
+        <div className="table-wrap" style={{ padding: '1.5rem', marginBottom: '1.25rem' }}>
+          <h2 className="chart-title">Quick-Switch PIN</h2>
+          <p className="report-period" style={{ margin: '0 0 1rem' }}>
+            If this shop shares one counter PC between staff, a PIN lets you switch back in with a few taps
+            instead of retyping your email and password every handoff. Your password still works everywhere -
+            the PIN only unlocks quick-switch on devices you've already signed into normally.
+          </p>
+
+          {user?.hasPin && !pinEditing ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <span className="badge badge-ok">PIN is set up</span>
+              <button type="button" className="btn-secondary btn-inline" onClick={() => setPinEditing(true)}>
+                Change PIN
+              </button>
+              <button type="button" className="btn-link btn-link-danger" onClick={handleRemovePin} disabled={removingPin}>
+                {removingPin ? 'Removing...' : 'Remove PIN'}
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handlePinSubmit}>
+              <div className="form-field">
+                <label>Current Password</label>
+                <input
+                  type="password"
+                  value={pinForm.currentPassword}
+                  onChange={(e) => setPinForm({ ...pinForm, currentPassword: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-row" style={{ marginTop: '0.85rem' }}>
+                <div className="form-field">
+                  <label>New PIN (4-6 digits)</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="\d{4,6}"
+                    maxLength={6}
+                    value={pinForm.pin}
+                    onChange={(e) => setPinForm({ ...pinForm, pin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                    required
+                  />
+                </div>
+                <div className="form-field">
+                  <label>Confirm PIN</label>
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    pattern="\d{4,6}"
+                    maxLength={6}
+                    value={pinForm.confirmPin}
+                    onChange={(e) => setPinForm({ ...pinForm, confirmPin: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                    required
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.1rem' }}>
+                {user?.hasPin && (
+                  <button type="button" className="btn-secondary" onClick={() => setPinEditing(false)}>
+                    Cancel
+                  </button>
+                )}
+                <button className="btn-primary btn-inline" type="submit" disabled={savingPin}>
+                  {savingPin ? 'Saving...' : user?.hasPin ? 'Update PIN' : 'Set Up PIN'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
 
         <div className="table-wrap" style={{ padding: '1.5rem' }}>
           <h2 className="chart-title">What You Can Do</h2>

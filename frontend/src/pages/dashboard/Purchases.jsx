@@ -5,7 +5,8 @@ import { listPurchases, createPurchase, markPurchaseReceived, cancelPurchase } f
 import { listSuppliers } from '../../api/suppliers';
 import { listProducts } from '../../api/products';
 import { useAuth } from '../../context/useAuth';
-import { formatCurrency, formatDate } from '../../utils/format';
+import { formatCurrency, formatDate, capitalize } from '../../utils/format';
+import ConfirmModal from '../../components/ConfirmModal';
 import './Inventory.css';
 
 export default function Purchases() {
@@ -15,6 +16,8 @@ export default function Purchases() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [receiving, setReceiving] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
 
   const canManage = user?.role === 'owner' || user?.role === 'manager';
 
@@ -36,22 +39,24 @@ export default function Purchases() {
     listProducts({ limit: 200 }).then((r) => setProducts(r.data)).catch(() => {});
   }, [fetchPurchases]);
 
-  const handleReceive = async (purchase) => {
-    if (!window.confirm('Mark as received? Stock will be added to inventory.')) return;
+  const handleReceiveConfirm = async () => {
+    if (!receiving) return;
     try {
-      await markPurchaseReceived(purchase._id);
+      await markPurchaseReceived(receiving._id);
       toast.success('Purchase received, stock updated');
+      setReceiving(null);
       fetchPurchases();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to receive purchase');
     }
   };
 
-  const handleCancel = async (purchase) => {
-    if (!window.confirm('Cancel this purchase order?')) return;
+  const handleCancelConfirm = async () => {
+    if (!cancelling) return;
     try {
-      await cancelPurchase(purchase._id);
+      await cancelPurchase(cancelling._id);
       toast.success('Purchase cancelled');
+      setCancelling(null);
       fetchPurchases();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to cancel');
@@ -71,7 +76,7 @@ export default function Purchases() {
 
   const statusBadge = (status) => {
     const map = { received: 'badge-ok', pending: 'badge-warning', cancelled: 'badge-warning' };
-    return <span className={`badge ${map[status]}`}>{status}</span>;
+    return <span className={`badge ${map[status]}`}>{capitalize(status)}</span>;
   };
 
   return (
@@ -108,7 +113,7 @@ export default function Purchases() {
               purchases.map((p) => (
                 <tr key={p._id}>
                   <td>{formatDate(p.createdAt)}</td>
-                  <td>{p.supplierId?.name || '-'}</td>
+                  <td className="truncate" title={p.supplierId?.name}>{p.supplierId?.name || '-'}</td>
                   <td>{p.invoiceNumber || '-'}</td>
                   <td>{p.items.length}</td>
                   <td>{formatCurrency(p.totalAmount)}</td>
@@ -117,8 +122,8 @@ export default function Purchases() {
                   <td className="table-actions">
                     {canManage && p.status === 'pending' && (
                       <>
-                        <button className="btn-link" onClick={() => handleReceive(p)}>Receive</button>
-                        <button className="btn-link btn-link-danger" onClick={() => handleCancel(p)}>Cancel</button>
+                        <button className="btn-link" onClick={() => setReceiving(p)}>Receive</button>
+                        <button className="btn-link btn-link-danger" onClick={() => setCancelling(p)}>Cancel</button>
                       </>
                     )}
                   </td>
@@ -135,6 +140,26 @@ export default function Purchases() {
           products={products}
           onSave={handleCreate}
           onClose={() => setModalOpen(false)}
+        />
+      )}
+
+      {receiving && (
+        <ConfirmModal
+          title="Mark as received"
+          message="Mark as received? Stock will be added to inventory."
+          confirmText="Mark Received"
+          onConfirm={handleReceiveConfirm}
+          onClose={() => setReceiving(null)}
+        />
+      )}
+
+      {cancelling && (
+        <ConfirmModal
+          title="Cancel purchase order"
+          message="Cancel this purchase order? This cannot be undone."
+          confirmText="Cancel Order"
+          onConfirm={handleCancelConfirm}
+          onClose={() => setCancelling(null)}
         />
       )}
     </div>

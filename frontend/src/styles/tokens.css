@@ -1,0 +1,119 @@
+/*
+  RetailPro design tokens.
+  Single source of truth for color, type, spacing, and radius - every other
+  stylesheet in the app should reference these variables rather than
+  hardcoding new values, so the interface reads as one consistent system
+  instead of a pile of per-page one-offs.
+
+  Brand accent stays the existing product green (#16a34a/#22c55e, already
+  used across the sidebar/buttons/badges before this pass) rather than
+  introducing a new brand color - this is a typography/forms system upgrade,
+  not a rebrand.
+*/
+
+:root {
+  /* ---------- Font ---------- */
+  --font-family: 'Inter', 'Geist', -apple-system, 'SF Pro Display', 'IBM Plex Sans', 'Manrope', system-ui, sans-serif;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-extrabold: 800;
+
+  /* ---------- Type scale ---------- */
+  --fs-h1: 3rem;        /* 48px */
+  --fs-h2: 2.25rem;      /* 36px */
+  --fs-h3: 1.75rem;      /* 28px */
+  --fs-h4: 1.375rem;     /* 22px */
+  --fs-h5: 1.125rem;     /* 18px */
+  --fs-h6: 1.0625rem;    /* 17px */
+  --fs-page-title: 1.5rem;   /* 24px - in-app page headers (H3/H4 territory, not marketing H1) */
+  --fs-body: 1rem;       /* 16px */
+  --fs-body-sm: 0.875rem;    /* 14px */
+  --fs-small: 0.75rem;   /* 12px */
+
+  --lh-heading-tight: 1.1;
+  --lh-heading: 1.15;
+  --lh-body: 1.6;
+
+  --ls-heading-lg: -0.02em;
+  --ls-heading-md: -0.01em;
+  --ls-body: 0em;
+  --ls-button: 0.01em;
+  --ls-badge: 0.02em;
+  --ls-uppercase: 0.06em;
+
+  /* ---------- Color: text ---------- */
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #6b7280;
+  --color-text-placeholder: #9ca3af;
+  --color-text-disabled: #d1d5db;
+  --color-text-body: #374151;      /* soft dark gray for paragraph copy - never pure black */
+  --color-text-inverse: #ffffff;
+
+  --color-success: #16a34a;
+  --color-success-bg: #dcfce7;
+  --color-success-text: #15803d;
+  --color-warning: #d97706;
+  --color-warning-bg: #fef3c7;
+  --color-warning-text: #b45309;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fee2e2;
+  --color-danger-text: #b91c1c;
+  --color-info-bg: #dbeafe;
+  --color-info-text: #1d4ed8;
+
+  --color-link: #16a34a;
+  --color-link-hover: #15803d;
+
+  /* ---------- Color: brand / accent ---------- */
+  --color-brand: #22c55e;
+  --color-brand-strong: #16a34a;
+  --color-brand-contrast: #ffffff;
+
+  /* ---------- Color: surfaces & borders ---------- */
+  --color-bg-page: #f4f6f8;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #f8fafc;
+  --color-bg-input: #ffffff;
+  --color-bg-disabled: #f3f4f6;
+
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-border-hover: #9ca3af;
+  --color-border-focus: var(--color-brand-strong);
+
+  /* ---------- Radius ---------- */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* ---------- Spacing (8px system) ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+  --space-9: 64px;
+
+  /* ---------- Forms ---------- */
+  --input-height: 48px;
+  --input-radius: var(--radius-md);
+  --input-padding-x: 16px;
+  --input-padding-y: 12px;
+  --input-font-size: var(--fs-body);
+  --focus-ring: 0 0 0 3px rgba(22, 163, 74, 0.15);
+
+  /* ---------- Shadow ---------- */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.18);
+
+  --transition-fast: 0.15s ease;
+}

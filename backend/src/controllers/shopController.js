@@ -7,6 +7,8 @@ const {
   ROLE_PERMISSIONS,
   getEffectivePermissions,
 } = require('../config/permissions');
+const { getProvider } = require('../services/paymentProviders');
+const { buildWhatsAppUrl } = require('../services/whatsappService');
 
 const getGrantablePermissions = asyncHandler(async (req, res) => {
   res.json({
@@ -29,7 +31,20 @@ const getShop = asyncHandler(async (req, res) => {
     res.status(404);
     throw new Error('Shop not found');
   }
-  res.json({ success: true, data: mapRow(rows[0]) });
+
+  // Lazily flip an expired subscription rather than running a background job
+  // for it - this endpoint is hit on every dashboard load, so status is never
+  // stale for more than one page view.
+  let shop = rows[0];
+  if (shop.subscription_status === 'active' && shop.subscription_ends_at && new Date(shop.subscription_ends_at) < new Date()) {
+    const { rows: updated } = await query(
+      `UPDATE shops SET subscription_status = 'expired' WHERE id = $1 RETURNING *`,
+      [req.shopId]
+    );
+    shop = updated[0];
+  }
+
+  res.json({ success: true, data: mapRow(shop) });
 });
 
 const updateShop = asyncHandler(async (req, res) => {
@@ -167,6 +182,12 @@ const deleteUser = asyncHandler(async (req, res) => {
 const requestSubscriptionUpgrade = asyncHandler(async (req, res) => {
   const { planRequested, paymentChannel, transactionId, notes } = req.body;
 
+  // Resolves to a real gateway if one is ever configured (see
+  // services/paymentProviders); today this always falls back to the manual
+  // provider, which is exactly the existing record-and-WhatsApp-ping flow.
+  const provider = getProvider(paymentChannel);
+  await provider.createPaymentRequest({ transactionId, notes, planRequested, shopId: req.shopId });
+
   const trxRef = `${paymentChannel || 'Transfer'} TRX: ${transactionId || 'Pending'} (${planRequested || 'Pro'})`;
   await query(
     `UPDATE shops SET last_payment_trx = $1, subscription_status = 'pending_activation' WHERE id = $2`,
@@ -185,8 +206,10 @@ const requestSubscriptionUpgrade = asyncHandler(async (req, res) => {
   );
 
   const whatsappMsg = `Assalam-o-Alaikum,\n\nShop *${shop.name}* (ID: ${shop._id}) requested subscription upgrade:\n• Plan: *${planRequested || 'Pro'}*\n• Payment Mode: *${paymentChannel || 'JazzCash/EasyPaisa'}*\n• TRX ID: *${transactionId || 'N/A'}*\n\nPlease verify and activate subscription.`;
-  const cleanPhone = (process.env.ADMIN_WHATSAPP || '923056779779').replace(/\D/g, '');
-  const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(whatsappMsg)}`;
+  // Routed through the shared helper (not a second hand-rolled cleanPhone
+  // regex) so ADMIN_WHATSAPP typed in the natural local format
+  // ("03056779779", not "923056779779") still produces a working wa.me link.
+  const whatsappUrl = buildWhatsAppUrl(process.env.ADMIN_WHATSAPP || '923056779779', whatsappMsg);
 
   res.json({
     success: true,
@@ -196,35 +219,31 @@ const requestSubscriptionUpgrade = asyncHandler(async (req, res) => {
   });
 });
 
-// POST /api/shop/subscription/activate (For Admin/Owner to set plan and extend validity)
-const activateSubscription = asyncHandler(async (req, res) => {
-  const { plan, durationMonths = 1 } = req.body;
-
-  const { rows } = await query(
-    `UPDATE shops SET
-       subscription_plan = $1,
-       subscription_status = 'active',
-       subscription_ends_at = NOW() + ($2 || '1 month')::interval
-     WHERE id = $3
-     RETURNING *`,
-    [plan || 'pro', `${durationMonths} months`, req.shopId]
-  );
-
-  res.json({
-    success: true,
-    message: `Subscription updated to ${plan || 'pro'} plan for ${durationMonths} month(s)`,
-    data: mapRow(rows[0]),
-  });
+// GET /api/shop/payment-accounts - read-only for any signed-in shop user.
+// These are the platform operator's own receiving accounts (same for every
+// shop), shown on the upgrade-request screen. Editing happens only through
+// /api/admin/payment-accounts (see adminController.js) - a shop owner can
+// read but never write these.
+const getPaymentAccounts = asyncHandler(async (req, res) => {
+  const { rows } = await query('SELECT * FROM platform_payment_accounts WHERE id = 1');
+  res.json({ success: true, data: rows.length ? mapRow(rows[0]) : null });
 });
+
+// NOTE: subscription activation is intentionally NOT exposed here. It used to
+// be a shop-owner-callable endpoint gated only by shop:settings permission,
+// which meant any shop owner could activate their own paid plan without ever
+// paying - see docs/knowledge-graph.md gap #2. Activation now lives in
+// adminController.js, gated by requirePlatformAdmin (a secret only the
+// platform operator holds), reachable only via /api/admin/*.
 
 module.exports = {
   getShop,
   updateShop,
   getUsers,
+  getPaymentAccounts,
   createUser,
   updateUser,
   deleteUser,
   getGrantablePermissions,
   requestSubscriptionUpgrade,
-  activateSubscription,
 };

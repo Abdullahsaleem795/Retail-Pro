@@ -5,6 +5,7 @@ import {
   listNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  deleteNotification,
 } from '../api/notifications';
 import { formatDateTime } from '../utils/format';
 import './NotificationBell.css';
@@ -59,6 +60,10 @@ export default function NotificationBell() {
       setLoading(true);
       await fetchNotifications();
       setLoading(false);
+      // Opening the panel counts as having seen them - clear the badge like
+      // any other notification bell, instead of leaving it stuck until each
+      // item is clicked individually.
+      handleMarkAll();
     }
   };
 
@@ -70,6 +75,19 @@ export default function NotificationBell() {
     try {
       await markNotificationRead(notification._id);
     } catch {
+      fetchNotifications(); // roll back to server truth
+    }
+  };
+
+  const handleDelete = async (notification, e) => {
+    e.stopPropagation();
+    const wasUnread = !notification.isRead;
+    setNotifications((prev) => prev.filter((n) => n._id !== notification._id));
+    if (wasUnread) setUnreadCount((c) => Math.max(c - 1, 0));
+    try {
+      await deleteNotification(notification._id);
+    } catch {
+      toast.error('Could not delete notification');
       fetchNotifications(); // roll back to server truth
     }
   };
@@ -114,14 +132,26 @@ export default function NotificationBell() {
                 <p className="notif-empty">No notifications yet. Stock alerts and daily reports will appear here.</p>
               ) : (
                 notifications.map((n) => (
-                  <button
+                  <div
                     key={n._id}
+                    role="button"
+                    tabIndex={0}
                     className={n.isRead ? 'notif-item' : 'notif-item notif-item-unread'}
                     onClick={() => handleRead(n)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleRead(n)}
                   >
                     <div className="notif-item-top">
                       <span className="notif-type">{TYPE_LABELS[n.type] || n.type}</span>
-                      <span className="notif-time">{formatDateTime(n.createdAt)}</span>
+                      <div className="notif-item-top-right">
+                        <span className="notif-time">{formatDateTime(n.createdAt)}</span>
+                        <button
+                          className="notif-delete"
+                          aria-label="Delete notification"
+                          onClick={(e) => handleDelete(n, e)}
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
                     <span className="notif-title">{n.title}</span>
                     {n.channel === 'whatsapp' && (
@@ -129,7 +159,7 @@ export default function NotificationBell() {
                         WhatsApp: {n.deliveryStatus}
                       </span>
                     )}
-                  </button>
+                  </div>
                 ))
               )}
             </div>

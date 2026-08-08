@@ -3,71 +3,58 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { motion } from 'framer-motion';
 import './BarcodeScanner.css';
 
-const SCANNER_ELEMENT_ID = 'retailpro-barcode-reader';
-
-/**
- * Camera barcode scanner for shops without a hardware wedge scanner - most
- * Pakistani kiryana owners run the POS from an Android phone.
- *
- * Note: getUserMedia requires HTTPS (or localhost). On a LAN IP over plain
- * HTTP the browser blocks camera access, which is why the error path below
- * calls that out explicitly rather than just saying "camera failed".
- */
 export default function BarcodeScanner({ onDetected, onClose }) {
-  const scannerRef = useRef(null);
   const [error, setError] = useState('');
-  const [starting, setStarting] = useState(true);
+  const scannerRef = useRef(null);
+  const mountLock = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
-    const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID, { verbose: false });
-    scannerRef.current = scanner;
+    // Prevent React 18 StrictMode double-mounting from creating multiple video elements
+    if (mountLock.current) return;
+    mountLock.current = true;
 
-    const onScanSuccess = (decodedText) => {
-      scanner
-        .stop()
-        .catch(() => {})
-        .finally(() => onDetected(decodedText));
-    };
+    let isUnmounted = false;
+    
+    // Force clear any leftover DOM elements from hot-reloads
+    const readerDiv = document.getElementById("reader");
+    if (readerDiv) readerDiv.innerHTML = "";
 
-    const startCamera = async () => {
-      try {
-        const devices = await Html5Qrcode.getCameras();
-        if (devices && devices.length > 0) {
-          const backCamera = devices.find((d) => /back|rear|environment/i.test(d.label));
-          const cameraId = backCamera ? backCamera.id : devices[0].id;
-          await scanner.start(cameraId, { fps: 10, qrbox: { width: 260, height: 150 } }, onScanSuccess, () => {});
-        } else {
-          try {
-            await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 260, height: 150 } }, onScanSuccess, () => {});
-          } catch {
-            await scanner.start({ facingMode: 'user' }, { fps: 10, qrbox: { width: 260, height: 150 } }, onScanSuccess, () => {});
+    const html5QrCode = new Html5Qrcode("reader");
+    scannerRef.current = html5QrCode;
+
+    html5QrCode.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: { width: 300, height: 150 }
+      },
+      (decodedText) => {
+        if (!isUnmounted) {
+          isUnmounted = true;
+          if (scannerRef.current && scannerRef.current.isScanning) {
+            scannerRef.current.stop().then(() => {
+              onDetected(decodedText);
+            }).catch(() => {
+              onDetected(decodedText);
+            });
+          } else {
+             onDetected(decodedText);
           }
         }
-        if (!cancelled) setStarting(false);
-      } catch (err) {
-        if (cancelled) return;
-        setStarting(false);
-        if (!window.isSecureContext) {
-          setError('Camera needs a secure connection (HTTPS or localhost).');
-        } else if (/NotAllowedError|Permission/i.test(err?.message || '')) {
-          setError('Camera permission denied. Please allow camera access in your browser.');
-        } else if (/NotFoundError/i.test(err?.message || '')) {
-          setError('No camera device found on this computer/phone.');
-        } else {
-          setError(`Could not start camera: ${err?.message || 'Permission denied or device in use'}`);
-        }
-      }
-    };
-
-    startCamera();
+      },
+      () => { /* Ignore empty frames */ }
+    ).catch(err => {
+      if (!isUnmounted) setError("Failed to start camera: " + err);
+    });
 
     return () => {
-      cancelled = true;
-      const active = scannerRef.current;
-      if (active?.isScanning) {
-        active.stop().catch(() => {});
+      isUnmounted = true;
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().then(() => {
+          scannerRef.current.clear();
+        }).catch(e => console.error(e));
       }
+      mountLock.current = false;
     };
   }, [onDetected]);
 
@@ -82,13 +69,16 @@ export default function BarcodeScanner({ onDetected, onClose }) {
       >
         <div className="modal-title">Scan Barcode</div>
 
-        <div id={SCANNER_ELEMENT_ID} className="scanner-view" />
+        <div className="scanner-view" style={{ overflow: 'hidden', borderRadius: '8px', minHeight: '200px' }}>
+          <div id="reader" style={{ width: '100%' }}></div>
+        </div>
 
-        {starting && !error && <p className="scanner-hint">Starting camera...</p>}
-        {error ? (
-          <p className="scanner-error">{error}</p>
-        ) : (
-          !starting && <p className="scanner-hint">Point the rear camera at the product barcode.</p>
+        {error && <p className="scanner-error">{error}</p>}
+        
+        {!error && (
+          <p className="scanner-hint" style={{ marginTop: '15px' }}>
+            <strong>Important:</strong> Watch out for screen glare! Ensure the barcode lines are not covered by white light reflection.
+          </p>
         )}
 
         <button className="btn-secondary" style={{ marginTop: '1rem' }} onClick={onClose}>

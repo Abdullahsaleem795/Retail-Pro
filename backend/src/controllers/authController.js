@@ -12,6 +12,9 @@ const tokenPayload = (user) => ({
   role: user.role,
 });
 
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCK_MINUTES = 15;
+
 // @route POST /api/auth/register
 // Creates a new Shop plus its first user (owner) atomically. This is the only
 // place a shopId is ever generated - every subsequent request derives shopId
@@ -82,7 +85,101 @@ const login = asyncHandler(async (req, res) => {
     success: true,
     accessToken,
     refreshToken,
-    user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role },
+    user: {
+      id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role,
+      hasPin: Boolean(row.pin),
+    },
+    shop: { id: row.shop_pk, name: row.shop_name, businessType: row.shop_business_type },
+    permissions: getEffectivePermissions(user),
+  });
+});
+
+// @route POST /api/auth/pin-login
+// The quick-switch path for a shared shop PC: once someone has done one real
+// email+password login on this browser, the frontend remembers {id, name,
+// role} locally (no secrets) and offers a tile to tap instead of retyping
+// credentials every shift handoff. Looking a user up by id (a UUID from that
+// local list) rather than by email means this endpoint can never be used to
+// enumerate accounts - you already have to know exactly who you're signing
+// in as.
+//
+// PINs are short (4-6 digits), so unlike password login this needs its own
+// per-account lockout on top of the IP-based authLimiter - on a shared PC,
+// IP limiting alone doesn't stop one coworker brute-forcing another's PIN
+// from the same counter.
+const pinLogin = asyncHandler(async (req, res) => {
+  const { userId, pin } = req.body;
+
+  if (!userId || !pin) {
+    res.status(400);
+    throw new Error('userId and pin are required');
+  }
+
+  const { rows } = await query(
+    `SELECT u.*, s.id AS shop_pk, s.name AS shop_name, s.business_type AS shop_business_type,
+            s.is_active AS shop_is_active
+     FROM users u JOIN shops s ON s.id = u.shop_id
+     WHERE u.id = $1`,
+    [userId]
+  );
+
+  if (rows.length === 0) {
+    res.status(401);
+    throw new Error('Account not found - sign in with your password');
+  }
+
+  const row = rows[0];
+
+  if (!row.pin) {
+    res.status(400);
+    throw new Error('No PIN set up for this account yet - sign in with your password');
+  }
+
+  if (row.pin_locked_until && new Date(row.pin_locked_until) > new Date()) {
+    const minutesLeft = Math.ceil((new Date(row.pin_locked_until) - new Date()) / 60000);
+    res.status(429);
+    throw new Error(`Too many incorrect PIN attempts. Try again in ${minutesLeft} minute(s), or sign in with your password.`);
+  }
+
+  const pinMatches = await bcrypt.compare(String(pin), row.pin);
+
+  if (!pinMatches) {
+    const attempts = row.pin_failed_attempts + 1;
+    if (attempts >= PIN_MAX_ATTEMPTS) {
+      await query(
+        `UPDATE users SET pin_failed_attempts = 0, pin_locked_until = now() + ($2 || ' minutes')::interval WHERE id = $1`,
+        [row.id, PIN_LOCK_MINUTES]
+      );
+      res.status(429);
+      throw new Error(`Too many incorrect PIN attempts. Try again in ${PIN_LOCK_MINUTES} minutes, or sign in with your password.`);
+    }
+    await query('UPDATE users SET pin_failed_attempts = $1 WHERE id = $2', [attempts, row.id]);
+    res.status(401);
+    throw new Error(`Incorrect PIN (${PIN_MAX_ATTEMPTS - attempts} attempt(s) left)`);
+  }
+
+  if (!row.is_active || !row.shop_is_active) {
+    res.status(403);
+    throw new Error('Account or shop is deactivated');
+  }
+
+  await query(
+    'UPDATE users SET last_login_at = now(), pin_failed_attempts = 0, pin_locked_until = NULL WHERE id = $1',
+    [row.id]
+  );
+
+  const user = mapRow(row);
+  const accessToken = generateAccessToken(tokenPayload(user));
+  const refreshToken = generateRefreshToken(tokenPayload(user));
+
+  res.json({
+    success: true,
+    accessToken,
+    refreshToken,
+    user: {
+      id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role,
+      hasPin: true,
+    },
     shop: { id: row.shop_pk, name: row.shop_name, businessType: row.shop_business_type },
     permissions: getEffectivePermissions(user),
   });
@@ -132,6 +229,7 @@ const getMe = asyncHandler(async (req, res) => {
       email: req.user.email,
       phone: req.user.phone,
       role: req.user.role,
+      hasPin: req.user.hasPin,
     },
     shop: shop ? { id: shop._id, name: shop.name, businessType: shop.businessType } : null,
     shopId: req.shopId,
@@ -191,4 +289,55 @@ const changePassword = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Password updated' });
 });
 
-module.exports = { registerShopOwner, login, refresh, getMe, updateProfile, changePassword };
+// @route PUT /api/auth/pin - set or change your own quick-switch PIN.
+// Requires the current password for the same reason changePassword does: an
+// unattended, already-logged-in till shouldn't let anyone standing at it
+// silently add a low-friction backdoor into the account.
+const setPin = asyncHandler(async (req, res) => {
+  const { currentPassword, pin } = req.body;
+
+  if (!/^\d{4,6}$/.test(pin || '')) {
+    res.status(400);
+    throw new Error('PIN must be 4 to 6 digits');
+  }
+
+  const { rows } = await query('SELECT password FROM users WHERE id = $1', [req.userId]);
+  if (rows.length === 0) {
+    res.status(404);
+    throw new Error('User not found');
+  }
+
+  if (!(await bcrypt.compare(currentPassword || '', rows[0].password))) {
+    res.status(401);
+    throw new Error('Current password is incorrect');
+  }
+
+  const pinHash = await bcrypt.hash(pin, 10);
+  await query(
+    'UPDATE users SET pin = $1, pin_failed_attempts = 0, pin_locked_until = NULL WHERE id = $2',
+    [pinHash, req.userId]
+  );
+
+  res.json({ success: true, message: 'PIN set up' });
+});
+
+// @route DELETE /api/auth/pin - turn quick-switch off for your own account.
+const removePin = asyncHandler(async (req, res) => {
+  await query(
+    'UPDATE users SET pin = NULL, pin_failed_attempts = 0, pin_locked_until = NULL WHERE id = $1',
+    [req.userId]
+  );
+  res.json({ success: true, message: 'PIN removed' });
+});
+
+module.exports = {
+  registerShopOwner,
+  login,
+  pinLogin,
+  refresh,
+  getMe,
+  updateProfile,
+  changePassword,
+  setPin,
+  removePin,
+};

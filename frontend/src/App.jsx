@@ -14,6 +14,7 @@ const Register = lazy(() => import('./pages/auth/Register'));
 const DashboardHome = lazy(() => import('./pages/dashboard/DashboardHome'));
 const POS = lazy(() => import('./pages/dashboard/POS'));
 const Inventory = lazy(() => import('./pages/dashboard/Inventory'));
+const ExpiryAlerts = lazy(() => import('./pages/dashboard/ExpiryAlerts'));
 const Sales = lazy(() => import('./pages/dashboard/Sales'));
 const Purchases = lazy(() => import('./pages/dashboard/Purchases'));
 const Reports = lazy(() => import('./pages/dashboard/Reports'));
@@ -24,6 +25,8 @@ const Settings = lazy(() => import('./pages/dashboard/Settings'));
 const Categories = lazy(() => import('./pages/dashboard/Categories'));
 const Staff = lazy(() => import('./pages/dashboard/Staff'));
 const Profile = lazy(() => import('./pages/dashboard/Profile'));
+const Branches = lazy(() => import('./pages/dashboard/Branches'));
+const AdminConsole = lazy(() => import('./pages/AdminConsole'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
@@ -38,15 +41,21 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          {/* Platform-operator console - gated by PLATFORM_ADMIN_KEY (a header
+              the user enters, not a shop JWT), so it lives outside ProtectedRoute
+              on purpose: it manages ALL shops, not one signed-in shop's data. */}
+          <Route path="/admin" element={<AdminConsole />} />
 
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<DashboardLayout />}>
               <Route index element={<DashboardHome />} />
               <Route path="pos" element={<POS />} />
               <Route path="inventory" element={<Inventory />} />
+              <Route path="expiry-alerts" element={<ExpiryAlerts />} />
               <Route path="sales" element={<Sales />} />
               <Route path="purchases" element={<Purchases />} />
               <Route path="reports" element={<Reports />} />
+              <Route path="branches" element={<Branches />} />
               <Route path="suppliers" element={<Suppliers />} />
               <Route path="customers" element={<Customers />} />
               <Route path="expenses" element={<Expenses />} />

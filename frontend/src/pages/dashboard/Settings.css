@@ -1,0 +1,273 @@
+/*
+  Subscription & billing section - was ~250 lines of inline styles with
+  hardcoded hex colors (off-brand blue #2563eb instead of the app's actual
+  green) and an emoji on nearly every line. Rebuilt on the shared design
+  tokens (styles/tokens.css, cascades globally via index.css) so it reads as
+  part of the same product as the rest of the dashboard, not a separate
+  marketing flyer pasted into it.
+*/
+
+.sub-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-5);
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.sub-section-label {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-3);
+}
+
+/* ---------- Plan comparison cards ---------- */
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.plan-card {
+  position: relative;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-4) var(--space-4);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  text-align: left;
+}
+.plan-card:hover {
+  border-color: var(--color-brand);
+  transform: translateY(-1px);
+}
+.plan-card.is-selected {
+  border: 2px solid var(--color-brand-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.plan-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.plan-card-name {
+  margin: 0;
+  font-size: var(--fs-h6);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+}
+
+.plan-card-price {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-bold);
+  color: var(--color-brand-strong);
+  white-space: nowrap;
+}
+
+.plan-card-tagline {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+  margin: var(--space-1) 0 var(--space-3);
+  line-height: var(--lh-body);
+}
+
+.plan-card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.plan-card-list li {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: var(--fs-small);
+  color: var(--color-text-secondary);
+  line-height: var(--lh-body);
+}
+.plan-card-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-text-placeholder);
+}
+.plan-card-list li strong {
+  color: var(--color-text-primary);
+  font-weight: var(--fw-semibold);
+}
+
+.plan-badge-recommended {
+  position: absolute;
+  top: -10px;
+  right: var(--space-4);
+  background: var(--color-brand-strong);
+  color: var(--color-brand-contrast);
+  font-size: 0.68rem;
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-uppercase);
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+}
+
+/* ---------- Payment accounts ---------- */
+
+.payment-box {
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.payment-box p {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.payment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.payment-account {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-small);
+  color: var(--color-text-secondary);
+}
+
+.payment-account-title {
+  display: block;
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-1);
+}
+
+/* ---------- Language toggle (segmented control) ---------- */
+
+.lang-toggle {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+}
+
+.lang-toggle button {
+  border: none;
+  background: none;
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-family);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.lang-toggle button.is-active {
+  background: var(--color-brand-strong);
+  color: var(--color-brand-contrast);
+  font-weight: var(--fw-semibold);
+}
+
+/* ---------- Selected-plan benefits box ---------- */
+
+.benefits-box {
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  margin: var(--space-4) 0;
+}
+
+.benefits-box-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.benefits-box-plan {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+}
+
+.benefits-box-kicker {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-muted);
+  letter-spacing: var(--ls-uppercase);
+  text-transform: uppercase;
+}
+
+.benefits-box-tagline {
+  font-size: var(--fs-small);
+  color: var(--color-text-secondary);
+  margin: 0 0 var(--space-3);
+}
+
+.benefits-box-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.benefits-box-list li {
+  position: relative;
+  padding-left: 1.1rem;
+  font-size: var(--fs-small);
+  color: var(--color-text-primary);
+  line-height: var(--lh-body);
+}
+.benefits-box-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-brand-strong);
+}
+.benefits-box[dir='rtl'] .benefits-box-list li {
+  padding-left: 0;
+  padding-right: 1.1rem;
+}
+.benefits-box[dir='rtl'] .benefits-box-list li::before {
+  left: auto;
+  right: 0;
+}
+
+.btn-whatsapp {
+  background: #25d366;
+  color: #fff;
+  border: none;
+}
+.btn-whatsapp:hover:not(:disabled) {
+  background: #1fb855;
+}

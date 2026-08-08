@@ -16,6 +16,9 @@ const saleRoutes = require('./routes/saleRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const shopRoutes = require('./routes/shopRoutes');
+const branchRoutes = require('./routes/branchRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const cronRoutes = require('./routes/cronRoutes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
@@ -78,6 +81,7 @@ const authLimiter = rateLimit({
 });
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/pin-login', authLimiter);
 
 app.get(['/', '/api'], (req, res) =>
   res.json({ success: true, message: 'RetailPro API is running', health: '/api/health' })
@@ -95,6 +99,9 @@ app.use('/api/sales', saleRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/shop', shopRoutes);
+app.use('/api/branches', branchRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/cron', cronRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

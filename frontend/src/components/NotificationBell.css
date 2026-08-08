@@ -105,7 +105,31 @@
 .notif-item-top {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 0.5rem;
+}
+
+.notif-item-top-right {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.notif-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.15rem;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.notif-delete:hover {
+  color: #dc2626;
+  background: #fef2f2;
 }
 
 .notif-type {

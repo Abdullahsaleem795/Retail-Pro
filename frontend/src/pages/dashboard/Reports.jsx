@@ -26,12 +26,21 @@ export default function Reports() {
   const [tab, setTab] = useState('profit');
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(true);
+  // The always-on summary at the top of the Profit & Loss tab - fixed to the
+  // last 30 days, loaded once alongside the other reports below.
+  const [overallProfit, setOverallProfit] = useState(null);
+  // The picker underneath it is separate and explicit: nothing is fetched
+  // just from typing a date, only when "Show Report" is actually pressed -
+  // so a half-picked date never flashes a stale/wrong result.
+  const [customRange, setCustomRange] = useState({ from: '', to: '' });
+  const [customProfit, setCustomProfit] = useState(null);
+  const [customLoading, setCustomLoading] = useState(false);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const [profit, best, dead, fast, margin, reorder] = await Promise.all([
+        const [overall, best, dead, fast, margin, reorder] = await Promise.all([
           getProfitReport({}),
           getBestSellers({ limit: 20, days: 30 }),
           getDeadStock({ days: 60 }),
@@ -39,15 +48,16 @@ export default function Reports() {
           getLowMargin({ threshold: 15 }),
           getReorderSuggestions({ days: 30, coverDays: 14 }),
         ]);
-        setData({
-          profit: profit.data,
+        setOverallProfit(overall.data);
+        setData((prev) => ({
+          ...prev,
           best: best.data,
           dead: dead.data,
           fast: fast.data,
           margin: margin.data,
           reorder: reorder.data,
           reorderTotal: reorder.totalEstimatedCost,
-        });
+        }));
       } catch {
         toast.error('Failed to load reports');
       } finally {
@@ -57,7 +67,53 @@ export default function Reports() {
     load();
   }, []);
 
+  const handleShowReport = async () => {
+    if (!customRange.from && !customRange.to) {
+      toast.error('Pick a date first');
+      return;
+    }
+    setCustomLoading(true);
+    try {
+      const res = await getProfitReport({
+        from: customRange.from || undefined,
+        to: customRange.to || undefined,
+      });
+      setCustomProfit(res.data);
+    } catch {
+      toast.error('Failed to load report');
+    } finally {
+      setCustomLoading(false);
+    }
+  };
+
   if (loading) return <div className="page-loader">Loading reports...</div>;
+
+  const profitStatCards = (profit) => (
+    <div className="stat-grid">
+      <div className="stat-card" style={{ borderTopColor: '#3b82f6' }}>
+        <span className="stat-label">Revenue</span>
+        <span className="stat-value">{formatCurrency(profit.revenue)}</span>
+      </div>
+      <div className="stat-card" style={{ borderTopColor: '#f59e0b' }}>
+        <span className="stat-label">Cost of Goods Sold</span>
+        <span className="stat-value">{formatCurrency(profit.cogs)}</span>
+      </div>
+      <div className="stat-card" style={{ borderTopColor: '#8b5cf6' }}>
+        <span className="stat-label">Gross Profit</span>
+        <span className="stat-value">{formatCurrency(profit.grossProfit)}</span>
+      </div>
+      <div className="stat-card" style={{ borderTopColor: '#ef4444' }}>
+        <span className="stat-label">Expenses</span>
+        <span className="stat-value">{formatCurrency(profit.expenses)}</span>
+      </div>
+      <div className="stat-card" style={{ borderTopColor: profit.netProfit >= 0 ? '#22c55e' : '#ef4444' }}>
+        <span className="stat-label">Net Profit</span>
+        <span className="stat-value" style={{ color: profit.netProfit >= 0 ? '#16a34a' : '#dc2626' }}>
+          {formatCurrency(profit.netProfit)}
+        </span>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -76,35 +132,55 @@ export default function Reports() {
       </div>
 
       <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
-        {tab === 'profit' && data.profit && (
+        {tab === 'profit' && overallProfit && (
           <>
+            <h2 className="report-section-title">Overall Report</h2>
             <p className="report-period">
-              {formatDate(data.profit.from)} — {formatDate(data.profit.to)} (last 30 days)
+              {formatDate(overallProfit.from)} — {formatDate(overallProfit.to)} (last 30 days)
             </p>
-            <div className="stat-grid">
-              <div className="stat-card" style={{ borderTopColor: '#3b82f6' }}>
-                <span className="stat-label">Revenue</span>
-                <span className="stat-value">{formatCurrency(data.profit.revenue)}</span>
+            {profitStatCards(overallProfit)}
+
+            <h2 className="report-section-title report-section-title-spaced">View Report for a Day or Date Range</h2>
+            <div className="filter-row">
+              <div className="form-field">
+                <label>From</label>
+                <input
+                  type="date"
+                  value={customRange.from}
+                  onChange={(e) => setCustomRange({ ...customRange, from: e.target.value })}
+                />
               </div>
-              <div className="stat-card" style={{ borderTopColor: '#f59e0b' }}>
-                <span className="stat-label">Cost of Goods Sold</span>
-                <span className="stat-value">{formatCurrency(data.profit.cogs)}</span>
+              <div className="form-field">
+                <label>To</label>
+                <input
+                  type="date"
+                  value={customRange.to}
+                  onChange={(e) => setCustomRange({ ...customRange, to: e.target.value })}
+                />
               </div>
-              <div className="stat-card" style={{ borderTopColor: '#8b5cf6' }}>
-                <span className="stat-label">Gross Profit</span>
-                <span className="stat-value">{formatCurrency(data.profit.grossProfit)}</span>
-              </div>
-              <div className="stat-card" style={{ borderTopColor: '#ef4444' }}>
-                <span className="stat-label">Expenses</span>
-                <span className="stat-value">{formatCurrency(data.profit.expenses)}</span>
-              </div>
-              <div className="stat-card" style={{ borderTopColor: data.profit.netProfit >= 0 ? '#22c55e' : '#ef4444' }}>
-                <span className="stat-label">Net Profit</span>
-                <span className="stat-value" style={{ color: data.profit.netProfit >= 0 ? '#16a34a' : '#dc2626' }}>
-                  {formatCurrency(data.profit.netProfit)}
-                </span>
-              </div>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  setCustomRange({ from: today, to: today });
+                }}
+              >
+                Today
+              </button>
+              <button type="button" className="btn-primary btn-inline" onClick={handleShowReport} disabled={customLoading}>
+                {customLoading ? 'Loading...' : 'Show Report'}
+              </button>
             </div>
+
+            {customProfit && (
+              <>
+                <p className="report-period">
+                  {formatDate(customProfit.from)} — {formatDate(customProfit.to)}
+                </p>
+                {profitStatCards(customProfit)}
+              </>
+            )}
           </>
         )}
 

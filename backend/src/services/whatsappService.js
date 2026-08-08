@@ -9,9 +9,30 @@ const API_VERSION = 'v21.0';
 const isConfigured = () =>
   Boolean(process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN);
 
+// Every phone number in this app is entered/stored in the local Pakistani
+// format (e.g. "03001234567", what a shopkeeper actually types) - but both
+// wa.me links and the WhatsApp Cloud API's `to` field require full
+// international format with NO leading trunk 0 ("923001234567"). Passing the
+// local form straight through (as this code did before) makes wa.me show
+// "phone number shared via url is invalid" and would make a real Cloud API
+// send fail outright - this silently broke every WhatsApp touchpoint
+// (supplier orders, low-stock alerts, daily/weekly reports) for any number
+// stored in the format everyone actually uses. Confirmed live: every real
+// phone number in the production database was in this local format.
+const normalizePakistaniPhone = (phone) => {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('92')) return digits; // already international
+  if (digits.startsWith('0')) return `92${digits.slice(1)}`; // local trunk 0 -> country code
+  if (digits.length === 10) return `92${digits}`; // e.g. "3001234567", no leading 0
+  return digits; // unrecognized shape - pass through rather than guess wrong
+};
+
 const sendTextMessage = async (to, body) => {
+  const target = normalizePakistaniPhone(to);
+
   if (!isConfigured()) {
-    console.warn(`[whatsapp] not configured - would have sent to ${to}: ${body.slice(0, 60)}...`);
+    console.warn(`[whatsapp] not configured - would have sent to ${target}: ${body.slice(0, 60)}...`);
     return { skipped: true };
   }
 
@@ -25,7 +46,7 @@ const sendTextMessage = async (to, body) => {
     },
     body: JSON.stringify({
       messaging_product: 'whatsapp',
-      to,
+      to: target,
       type: 'text',
       text: { body },
     }),
@@ -72,13 +93,14 @@ const buildSupplierOrderDraft = (shopName, supplierName, items) => {
 };
 
 const buildWhatsAppUrl = (phone, text) => {
-  const cleanPhone = (phone || '').replace(/\D/g, '');
+  const cleanPhone = normalizePakistaniPhone(phone);
   const encodedText = encodeURIComponent(text);
   return cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodedText}` : `https://wa.me/?text=${encodedText}`;
 };
 
 module.exports = {
   isConfigured,
+  normalizePakistaniPhone,
   sendTextMessage,
   buildLowStockMessage,
   buildDailySalesMessage,

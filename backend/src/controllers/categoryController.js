@@ -70,4 +70,4 @@ const deleteCategory = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Category deleted' });
 });
 
-module.exports = { getCategories, createCategory, updateCategory, deleteCategory };
+module.exports = { getCategories, createCategory, updateCategory, deleteCategory, clearShopCategoryCache };

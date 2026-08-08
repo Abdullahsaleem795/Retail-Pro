@@ -14,7 +14,13 @@
 .pos-search-row {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.4rem;
+}
+
+.pos-scanner-hint {
+  margin: 0 0 1.25rem;
+  font-size: 0.78rem;
+  color: #94a3b8;
 }
 
 .pos-scan-btn {
@@ -119,13 +125,26 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  /* Once the cart has enough items to scroll, the scrollbar (and its arrow
+     buttons, on browsers/OS themes that render them) needs its own reserved
+     space - without this, it sits directly on top of each row's remove
+     button/right edge instead of beside the content. */
+  padding-right: 0.5rem;
 }
 
 .pos-cart-item {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  /* Each cart row is its own independent grid, so "auto" column widths were
+     computed per-row from that row's own content - a wide price like
+     "Rs 3600" made its row's total/qty/remove columns sit at a different x
+     position than a row showing "Rs 55". Fixed widths make every row use
+     the exact same column boundaries regardless of content, the way a real
+     <table>'s columns would. Trimmed to the actual minimum each control
+     needs - the cart panel is a fixed 380px (see .pos-shell), so every
+     pixel not spent on qty/price/remove is a pixel the product name gets. */
+  grid-template-columns: 1fr 92px 72px 32px;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   padding-bottom: 0.6rem;
   border-bottom: 1px solid #f1f5f9;
 }
@@ -140,9 +159,19 @@
   font-size: 0.85rem;
   font-weight: 600;
   color: #1e293b;
-  white-space: nowrap;
+  /* The 380px cart panel just isn't wide enough to fit a full product name
+     on one line next to qty controls + price + remove button - forcing it
+     to a single line with ellipsis was chopping ordinary names down to
+     "Shan Birya..." and worse, causing the price-each line below it to
+     visually collide with the truncated text. Wrapping to up to 2 lines
+     instead gives real names room to actually be readable; the row simply
+     gets a bit taller when a name needs it, which is fine - unlike x-position
+     misalignment, uneven row height across a short list of cart lines
+     reads as normal, not "broken". */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .pos-cart-item-price {
@@ -157,69 +186,178 @@
 }
 
 .pos-qty-control button {
-  width: 22px;
-  height: 22px;
+  /* Was 22x22px - well under the ~44px minimum touch target size (Apple HIG
+     / Material Design both recommend this), and this app's primary device
+     is a shopkeeper's Android phone at the counter. A target that small is
+     genuinely hard to hit with a finger, not just visually cramped. */
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid #d1d5db;
   background: #f8fafc;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 1rem;
   line-height: 1;
+  /* Without explicit flex centering, "-" and "+" glyphs sit at slightly
+     different vertical positions than digits/× do by default (browsers
+     don't reliably center a lone text-node in a fixed-height button on
+     their own) - the exact same fix already applied to .pos-remove-btn
+     below, just missing here, which is why + and - looked inconsistently
+     aligned next to the perfectly-centered x. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .pos-cart-item-total {
   font-size: 0.85rem;
   font-weight: 700;
   color: #101828;
+  text-align: right;
   white-space: nowrap;
 }
 
 .pos-remove-btn {
+  /* Same undersized-touch-target issue as .pos-qty-control button above -
+     the icon itself can stay small, but the clickable area (via padding,
+     not font-size) needs to be big enough to actually tap reliably. This is
+     very likely why removing an item "didn't work" in practice - the click
+     handler was always correct, the target was just too small to hit. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   background: none;
   border: none;
+  border-radius: 6px;
   color: #dc2626;
-  font-size: 1.1rem;
+  font-size: 1.3rem;
   cursor: pointer;
   line-height: 1;
+  transition: background 0.15s ease;
+}
+
+.pos-remove-btn:hover,
+.pos-remove-btn:active {
+  background: #fef2f2;
 }
 
 .pos-cart-footer {
-  border-top: 1px solid #e5e7eb;
-  padding-top: 0.9rem;
-  margin-top: 0.9rem;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 1.25rem;
+  margin-top: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
+}
+
+.pos-cart-footer .form-field label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+  display: block;
 }
 
 .pos-cart-footer select,
 .pos-cart-footer input {
-  padding: 0.5rem 0.65rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  color: #334155;
   width: 100%;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02) inset;
+}
+
+.pos-cart-footer select:focus,
+.pos-cart-footer input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+/* Custom select arrow */
+.pos-cart-footer select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1.25rem;
+  padding-right: 2.5rem;
 }
 
 .pos-totals {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  font-size: 0.85rem;
+  gap: 0.5rem;
+  font-size: 0.95rem;
   color: #475569;
+  background: #f8fafc;
+  padding: 1.25rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  margin-top: 0.5rem;
 }
 
 .pos-totals > div {
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
 .pos-total-grand {
-  font-size: 1.05rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+  border-top: 2px dashed #cbd5e1;
+}
+
+.pos-checkout-btn {
+  width: 100%;
+  padding: 1.1rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  color: #101828;
-  padding-top: 0.4rem;
-  border-top: 1px dashed #e2e8f0;
+  border-radius: 12px;
+  border: none;
+  color: white;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.pos-checkout-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+}
+
+.pos-checkout-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.pos-checkout-btn:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+  border: 1px solid #e2e8f0;
 }
 
 @media (max-width: 900px) {

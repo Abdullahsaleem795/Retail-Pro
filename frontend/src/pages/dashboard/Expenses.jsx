@@ -114,7 +114,7 @@ export default function Expenses() {
               expenses.map((e) => (
                 <tr key={e._id}>
                   <td>{new Date(e.date).toLocaleDateString()}</td>
-                  <td>{e.title}</td>
+                  <td className="truncate" title={e.title}>{e.title}</td>
                   <td>{e.category}</td>
                   <td>Rs {e.amount}</td>
                   <td className="table-actions">

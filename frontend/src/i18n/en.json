@@ -3,6 +3,7 @@
     "dashboard": "Dashboard",
     "pos": "POS",
     "inventory": "Inventory",
+    "expiryAlerts": "Expiry Alerts",
     "sales": "Sales",
     "purchases": "Purchases",
     "suppliers": "Suppliers",
@@ -12,7 +13,8 @@
     "settings": "Settings",
     "categories": "Categories",
     "staff": "Staff",
-    "profile": "Profile"
+    "profile": "Profile",
+    "branches": "Branches"
   },
   "common": {
     "add": "Add",

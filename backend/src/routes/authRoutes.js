@@ -3,10 +3,13 @@ const { body } = require('express-validator');
 const {
   registerShopOwner,
   login,
+  pinLogin,
   refresh,
   getMe,
   updateProfile,
   changePassword,
+  setPin,
+  removePin,
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
@@ -36,6 +39,16 @@ router.post(
   login
 );
 
+router.post(
+  '/pin-login',
+  [
+    body('userId').isUUID().withMessage('Valid userId is required'),
+    body('pin').matches(/^\d{4,6}$/).withMessage('PIN must be 4 to 6 digits'),
+  ],
+  validate,
+  pinLogin
+);
+
 router.post('/refresh', refresh);
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
@@ -46,5 +59,16 @@ router.put(
   validate,
   changePassword
 );
+router.put(
+  '/pin',
+  protect,
+  [
+    body('currentPassword').notEmpty().withMessage('Current password is required'),
+    body('pin').matches(/^\d{4,6}$/).withMessage('PIN must be 4 to 6 digits'),
+  ],
+  validate,
+  setPin
+);
+router.delete('/pin', protect, removePin);
 
 module.exports = router;

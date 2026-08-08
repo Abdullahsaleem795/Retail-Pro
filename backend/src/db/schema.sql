@@ -36,7 +36,11 @@ CREATE TABLE {{SCHEMA}}.shops (
   language text NOT NULL DEFAULT 'en' CHECK (language IN ('en','ur')),
   whatsapp_number text,
   low_stock_threshold numeric(14,3) NOT NULL DEFAULT 10,
-  subscription_plan text NOT NULL DEFAULT 'free' CHECK (subscription_plan IN ('free','pro','enterprise')),
+  subscription_plan text NOT NULL DEFAULT 'free' CHECK (subscription_plan IN ('free','basic','pro','enterprise')),
+  subscription_status text NOT NULL DEFAULT 'active'
+    CHECK (subscription_status IN ('active','pending_activation','expired','cancelled')),
+  subscription_ends_at timestamptz,
+  last_payment_trx text,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -49,13 +53,24 @@ CREATE TABLE {{SCHEMA}}.users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id uuid NOT NULL REFERENCES {{SCHEMA}}.shops(id) ON DELETE CASCADE,
   name text NOT NULL,
-  email text NOT NULL,
+  -- Globally unique, not just per-shop: login() looks a user up by
+  -- `WHERE email = $1` with no shop selector in the login form to
+  -- disambiguate, so the same email existing under two different shops
+  -- makes login non-deterministic (rows[0] with no ORDER BY) and can lock
+  -- an owner out of their own account. Proven live before this constraint
+  -- existed - see the 2026-08-03 migration comment in this repo's history.
+  email text NOT NULL UNIQUE,
   password text NOT NULL,
   phone text,
   role text NOT NULL DEFAULT 'cashier' CHECK (role IN ('owner','manager','cashier')),
   permissions text[] NOT NULL DEFAULT '{}',
   is_active boolean NOT NULL DEFAULT true,
   last_login_at timestamptz,
+  -- Quick-switch PIN login for shared shop PCs - see authController.js
+  -- pinLogin(). Nullable: opt-in via Profile, most accounts won't have one.
+  pin text,
+  pin_failed_attempts integer NOT NULL DEFAULT 0,
+  pin_locked_until timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (shop_id, email)
@@ -133,6 +148,7 @@ CREATE TABLE {{SCHEMA}}.products (
   stock_quantity numeric(14,3) NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
   low_stock_threshold numeric(14,3) NOT NULL DEFAULT 10,
   expiry_date date,
+  expiry_alert_days integer CHECK (expiry_alert_days IS NULL OR expiry_alert_days >= 0),
   image_url text,
   is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -254,7 +270,7 @@ CREATE TRIGGER trg_expenses_updated_at BEFORE UPDATE ON {{SCHEMA}}.expenses
 CREATE TABLE {{SCHEMA}}.notifications (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   shop_id uuid NOT NULL REFERENCES {{SCHEMA}}.shops(id) ON DELETE CASCADE,
-  type text NOT NULL CHECK (type IN ('low_stock','daily_report','weekly_report','expiry','payment_due','system')),
+  type text NOT NULL CHECK (type IN ('low_stock','daily_report','weekly_report','expiry','payment_due','system','subscription')),
   title text NOT NULL,
   message text NOT NULL,
   is_read boolean NOT NULL DEFAULT false,
@@ -267,6 +283,74 @@ CREATE INDEX idx_notifications_shop_created ON {{SCHEMA}}.notifications (shop_id
 CREATE INDEX idx_notifications_shop_unread ON {{SCHEMA}}.notifications (shop_id, is_read);
 CREATE TRIGGER trg_notifications_updated_at BEFORE UPDATE ON {{SCHEMA}}.notifications
   FOR EACH ROW EXECUTE FUNCTION {{SCHEMA}}.set_updated_at();
+
+-- ============ BRANCHES ============
+CREATE TABLE {{SCHEMA}}.branches (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  shop_id uuid NOT NULL REFERENCES {{SCHEMA}}.shops(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  address text,
+  phone text,
+  is_default boolean NOT NULL DEFAULT false,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (shop_id, name)
+);
+CREATE INDEX idx_branches_shop ON {{SCHEMA}}.branches (shop_id);
+CREATE TRIGGER trg_branches_updated_at BEFORE UPDATE ON {{SCHEMA}}.branches
+  FOR EACH ROW EXECUTE FUNCTION {{SCHEMA}}.set_updated_at();
+
+-- ============ STOCK TRANSFERS ============
+-- Manifest/logistics tracking of stock moved between branches. Deliberately
+-- does NOT split products.stock_quantity per branch - that would require
+-- rewriting the POS's transactional stock-deduction path (SELECT...FOR
+-- UPDATE), which is out of scope here. This is a paper-trail record: "X units
+-- moved from Branch A to Branch B", with a received-confirmation step.
+CREATE TABLE {{SCHEMA}}.stock_transfers (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  shop_id uuid NOT NULL REFERENCES {{SCHEMA}}.shops(id) ON DELETE CASCADE,
+  from_branch_id uuid NOT NULL REFERENCES {{SCHEMA}}.branches(id) DEFERRABLE INITIALLY DEFERRED,
+  to_branch_id uuid NOT NULL REFERENCES {{SCHEMA}}.branches(id) DEFERRABLE INITIALLY DEFERRED,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_transit','received','cancelled')),
+  notes text,
+  created_by uuid REFERENCES {{SCHEMA}}.users(id) ON DELETE SET NULL,
+  received_by uuid REFERENCES {{SCHEMA}}.users(id) ON DELETE SET NULL,
+  received_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (from_branch_id <> to_branch_id)
+);
+CREATE INDEX idx_stock_transfers_shop_created ON {{SCHEMA}}.stock_transfers (shop_id, created_at DESC);
+CREATE INDEX idx_stock_transfers_shop_status ON {{SCHEMA}}.stock_transfers (shop_id, status);
+CREATE TRIGGER trg_stock_transfers_updated_at BEFORE UPDATE ON {{SCHEMA}}.stock_transfers
+  FOR EACH ROW EXECUTE FUNCTION {{SCHEMA}}.set_updated_at();
+
+CREATE TABLE {{SCHEMA}}.stock_transfer_items (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  transfer_id uuid NOT NULL REFERENCES {{SCHEMA}}.stock_transfers(id) ON DELETE CASCADE,
+  product_id uuid NOT NULL REFERENCES {{SCHEMA}}.products(id) DEFERRABLE INITIALLY DEFERRED,
+  quantity numeric(14,3) NOT NULL CHECK (quantity > 0)
+);
+CREATE INDEX idx_stock_transfer_items_transfer ON {{SCHEMA}}.stock_transfer_items (transfer_id);
+
+-- ============ PLATFORM PAYMENT ACCOUNTS ============
+-- Singleton (id always 1): the platform operator's own JazzCash/EasyPaisa/
+-- bank receiving accounts, shown to every shop on the upgrade-request
+-- screen. Not per-shop data, so it doesn't belong on the shops table.
+-- Editable only via the platform admin console (requirePlatformAdmin).
+CREATE TABLE {{SCHEMA}}.platform_payment_accounts (
+  id integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  jazzcash_title text,
+  jazzcash_number text,
+  easypaisa_title text,
+  easypaisa_number text,
+  bank_title text,
+  bank_name text,
+  bank_iban text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO {{SCHEMA}}.platform_payment_accounts (id) VALUES (1);
 
 -- RLS enabled with intentionally NO policies on every table: this schema is
 -- accessed exclusively by the Express backend over a direct, credentialed
@@ -285,3 +369,7 @@ ALTER TABLE {{SCHEMA}}.sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {{SCHEMA}}.sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {{SCHEMA}}.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {{SCHEMA}}.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {{SCHEMA}}.branches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {{SCHEMA}}.stock_transfers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {{SCHEMA}}.stock_transfer_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {{SCHEMA}}.platform_payment_accounts ENABLE ROW LEVEL SECURITY;

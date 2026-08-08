@@ -1,118 +1,283 @@
+/*
+  Auth-page-specific chrome only. Shared form primitives (label, input,
+  select, .btn-primary, .form-field) now live in the global base
+  (src/index.css) so they're identical across Login, Register, and every
+  dashboard modal - this file used to redefine them, which meant editing
+  form styling in one place silently didn't affect the other, and (because
+  this file loads after the global base) would have quietly re-broken the
+  new 48px input height / token colors the moment either lazy chunk loaded.
+*/
+
 .auth-shell {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #101828 0%, #1e293b 100%);
-  padding: 1.5rem;
+  padding: var(--space-5);
 }
 
 .auth-card {
-  background: #fff;
-  border-radius: 14px;
-  padding: 2.25rem 2rem;
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8) var(--space-6);
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-lg);
 }
 
 .auth-brand {
   text-align: center;
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: #22c55e;
-  margin-bottom: 0.25rem;
+  font-size: var(--fs-h4);
+  font-weight: var(--fw-extrabold);
+  letter-spacing: var(--ls-heading-md);
+  color: var(--color-brand-strong);
+  margin-bottom: var(--space-1);
 }
 
 .auth-subtitle {
   text-align: center;
-  color: #64748b;
-  font-size: 0.88rem;
-  margin-bottom: 1.75rem;
+  color: var(--color-text-muted);
+  font-size: var(--fs-body-sm);
+  margin-bottom: var(--space-6);
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: var(--space-5);
 }
 
-.form-row {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.form-field {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.form-field label {
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: #334155;
-}
-
-.form-field input,
-.form-field select {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  font-size: 0.92rem;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.form-field input:focus,
-.form-field select:focus {
-  border-color: #22c55e;
+/* .form-row / .form-field are global (src/index.css) - the auth form's
+   fields sit flush against each other with no extra bottom margin since the
+   form itself already gaps them via flex `gap`. */
+.auth-form .form-field {
+  margin-bottom: 0;
 }
 
 .auth-error {
-  background: #fef2f2;
-  color: #b91c1c;
-  padding: 0.6rem 0.8rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
-}
-
-.btn-primary {
-  background: #22c55e;
-  color: #fff;
-  border: none;
-  padding: 0.7rem;
-  border-radius: 8px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease, transform 0.1s ease;
-  margin-top: 0.4rem;
-}
-
-.btn-primary:hover {
-  background: #16a34a;
-}
-
-.btn-primary:active {
-  transform: scale(0.98);
-}
-
-.btn-primary:disabled {
-  background: #94a3b8;
-  cursor: not-allowed;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
 }
 
 .auth-switch {
   text-align: center;
-  margin-top: 1.25rem;
-  font-size: 0.88rem;
-  color: #64748b;
+  margin-top: var(--space-5);
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-muted);
 }
 
 .auth-switch a {
-  color: #22c55e;
-  font-weight: 600;
+  color: var(--color-link);
+  font-weight: var(--fw-semibold);
   text-decoration: none;
+}
+
+.auth-switch-link {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: var(--space-5);
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+}
+.auth-switch-link:hover {
+  color: var(--color-text-secondary);
+}
+
+/* ---------- Quick-switch tiles ---------- */
+
+.pin-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+.pin-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.35rem;
+  padding: var(--space-4) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+.pin-tile:hover {
+  border-color: var(--color-brand);
+  background: var(--color-bg-subtle);
+  transform: translateY(-1px);
+}
+
+.pin-tile-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pin-tile-remove:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+
+.pin-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-brand);
+  color: var(--color-brand-contrast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-body);
+  flex-shrink: 0;
+}
+
+.pin-avatar-lg {
+  width: 56px;
+  height: 56px;
+  font-size: var(--fs-h6);
+}
+
+.pin-tile-name {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+  line-height: 1.25;
+}
+
+.pin-tile-role {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.pin-tile-shop {
+  font-size: 0.68rem;
+  color: var(--color-text-placeholder);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ---------- PIN entry ---------- */
+
+.pin-back {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: var(--space-5);
+}
+.pin-back:hover {
+  color: var(--color-text-secondary);
+}
+
+.pin-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.pin-identity-name {
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+}
+
+.pin-identity-role {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+/* Visually hidden but focusable/functional - the real input a keyboard user
+   types into and screen readers see; the dots below are the visual PIN
+   display so nothing shows the digits on screen. */
+.pin-hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pin-dots {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border-strong);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.pin-dot.is-filled {
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+}
+
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+}
+
+.pin-keypad button {
+  height: 52px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-family);
+  font-size: var(--fs-h6);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.pin-keypad button:hover:not(:disabled) {
+  border-color: var(--color-brand);
+  background: var(--color-bg-subtle);
+}
+.pin-keypad button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pin-keypad .pin-key-ghost {
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-muted);
+  background: none;
+  border-color: transparent;
 }

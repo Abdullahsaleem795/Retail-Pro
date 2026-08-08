@@ -1,14 +1,37 @@
+@import './styles/tokens.css';
+
+/*
+  Global base layer. Loaded first (main.jsx imports this before any route
+  chunk), so every shared class defined here - .page-title, .form-field,
+  .btn-*, .badge, table typography - is guaranteed to be styled the moment a
+  page renders, regardless of navigation order. Previously several of these
+  (.form-field, .page-title, .btn-primary) were only defined inside
+  Auth.css/DashboardHome.css, which happened to work because those chunks
+  loaded early in practice, but broke the "one system" guarantee.
+*/
+
 :root {
   color-scheme: light;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-family);
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 body {
   margin: 0;
+  font-family: var(--font-family);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-regular);
+  line-height: var(--lh-body);
+  color: var(--color-text-body);
+  background: var(--color-bg-page);
 }
 
 #root {
@@ -20,6 +43,343 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  color: #64748b;
-  font-size: 0.95rem;
+  color: var(--color-text-muted);
+  font-size: var(--fs-body-sm);
+}
+
+/* ============ Typography ============ */
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-primary);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-heading-md);
+}
+
+h1 { font-size: var(--fs-h1); line-height: var(--lh-heading-tight); letter-spacing: var(--ls-heading-lg); max-width: 60ch; }
+h2 { font-size: var(--fs-h2); line-height: var(--lh-heading); letter-spacing: var(--ls-heading-lg); }
+h3 { font-size: var(--fs-h3); line-height: var(--lh-heading); font-weight: var(--fw-semibold); }
+h4 { font-size: var(--fs-h4); font-weight: var(--fw-semibold); }
+h5 { font-size: var(--fs-h5); font-weight: var(--fw-semibold); }
+h6 { font-size: var(--fs-h6); font-weight: var(--fw-semibold); }
+
+p {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-body);
+  max-width: 70ch;
+}
+
+small {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-muted);
+}
+
+a {
+  color: var(--color-link);
+}
+
+a:hover {
+  color: var(--color-link-hover);
+}
+
+/* In-app page headers (dashboard section titles) - deliberately smaller than
+   a marketing H1; this is what every dashboard page renders via
+   <h1 className="page-title">. Defined once here so it's never dependent on
+   which route happened to load its CSS chunk first. */
+.page-title {
+  font-size: var(--fs-page-title);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-heading-md);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-5);
+  text-align: left;
+}
+
+/* Visible, consistent focus ring everywhere - no browser default outline,
+   no invisible focus states. */
+:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* ============ Buttons ============ */
+
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--input-height);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--input-radius);
+  border: none;
+  font-family: var(--font-family);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-button);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.btn-primary {
+  background: var(--color-brand);
+  color: var(--color-brand-contrast);
+}
+.btn-primary:hover:not(:disabled) { background: var(--color-brand-strong); }
+.btn-primary:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary:disabled {
+  background: var(--color-text-disabled);
+  color: var(--color-bg-surface);
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+.btn-secondary:hover:not(:disabled) { background: var(--color-border); border-color: var(--color-border-strong); }
+.btn-secondary:disabled { color: var(--color-text-disabled); cursor: not-allowed; }
+
+.btn-danger {
+  background: var(--color-danger);
+  color: var(--color-brand-contrast);
+}
+.btn-danger:hover:not(:disabled) { background: #b91c1c; }
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--color-link);
+  cursor: pointer;
+  font-family: var(--font-family);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  padding: 0;
+}
+.btn-link:hover { color: var(--color-link-hover); text-decoration: underline; }
+.btn-link-danger { color: var(--color-danger); }
+.btn-link-danger:hover { color: var(--color-danger-text); }
+
+/* ============ Forms ============ */
+
+/* Canonical field wrapper - label above input, used by every form in the
+   app (auth, settings, all modals). Lives here (not a page CSS file) so it
+   is never dependent on which route's chunk happened to load first. */
+.form-row {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.form-field {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-5);
+}
+
+.form-field:last-child {
+  margin-bottom: 0;
+}
+
+.form-field label {
+  margin-bottom: var(--space-2);
+}
+
+/* When fields sit side by side, a longer label (e.g. "Transaction TRX ID /
+   Reference #") can wrap to two lines while its neighbors stay on one -
+   without this, that pushes just that one input down out of line with the
+   rest of the row. Reserving two lines' worth of height for every label in
+   a row, bottom-aligned, means a one-line label sits flush against its
+   input exactly like a two-line one does, so every input in the row starts
+   at the same y position regardless of label length. */
+.form-row .form-field label {
+  min-height: 2.8em;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-end;
+}
+
+label {
+  display: block;
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: var(--input-height);
+  padding: var(--input-padding-y) var(--input-padding-x);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--input-radius);
+  background: var(--color-bg-input);
+  font-family: var(--font-family);
+  font-size: var(--input-font-size);
+  font-weight: var(--fw-regular);
+  font-style: normal;
+  color: var(--color-text-primary);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+textarea {
+  min-height: 120px;
+  resize: vertical;
+  line-height: var(--lh-body);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-placeholder);
+  font-weight: var(--fw-regular);
+  opacity: 1;
+}
+
+input:hover:not(:disabled):not(:focus),
+select:hover:not(:disabled):not(:focus),
+textarea:hover:not(:disabled):not(:focus) {
+  border-color: var(--color-border-hover);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-border-focus);
+  box-shadow: var(--focus-ring);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--color-bg-disabled);
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+input[data-state='success'],
+.input-success {
+  border-color: var(--color-success);
+}
+input[data-state='success']:focus {
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+}
+
+input[data-state='error'],
+.input-error {
+  border-color: var(--color-danger);
+}
+input[data-state='error']:focus {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+.field-message {
+  display: block;
+  font-size: 0.8125rem; /* 13px */
+  font-weight: var(--fw-medium);
+  margin-top: var(--space-2);
+}
+.field-message-error { color: var(--color-danger); }
+.field-message-success { color: var(--color-success); }
+.field-message-hint { color: var(--color-text-muted); }
+
+/* Checkbox / radio - kept native for accessibility (real keyboard/AT
+   support), restyled via accent-color rather than a full custom-element
+   rebuild, which is the pragmatic version of "modern filled style" that
+   doesn't risk breaking screen-reader semantics. */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--color-brand-strong);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+input[type='radio'] { width: 20px; height: 20px; }
+
+/* Uppercase eyebrow / label style, e.g. table headers or section kickers */
+.text-eyebrow {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-uppercase);
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+/* ============ Badges ============ */
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-badge);
+}
+
+.badge-ok { background: var(--color-success-bg); color: var(--color-success-text); }
+.badge-warning { background: var(--color-warning-bg); color: var(--color-warning-text); }
+.badge-danger { background: var(--color-danger-bg); color: var(--color-danger-text); }
+.badge-info { background: var(--color-info-bg); color: var(--color-info-text); }
+
+/* ============ Tables ============ */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-body-sm);
+}
+
+.data-table th {
+  text-align: left;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  font-weight: var(--fw-semibold);
+  font-size: 0.8125rem;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-bg-subtle);
+  color: var(--color-text-primary);
+}
+
+/* Numeric/amount columns - opt in with this class where a table renders money */
+.data-table td.num,
+.data-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Free-text columns (product/customer/supplier names, expense titles, etc.)
+   opt in with this class wherever the value has no natural length limit -
+   without it, one long name wraps that row to 2-3 lines while its neighbours
+   stay at one, and the whole table reads as uneven/unpolished. Truncating to
+   a single line keeps every row the same height; the full value is still
+   reachable via the native title tooltip on hover. */
+.data-table td.truncate {
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.table-empty {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: var(--space-6) !important;
 }

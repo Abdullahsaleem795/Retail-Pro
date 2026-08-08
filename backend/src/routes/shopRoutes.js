@@ -12,7 +12,7 @@ const {
   deleteUser,
   getGrantablePermissions,
   requestSubscriptionUpgrade,
-  activateSubscription,
+  getPaymentAccounts,
 } = require('../controllers/shopController');
 
 const router = express.Router();
@@ -20,8 +20,14 @@ router.use(protect);
 
 router.route('/').get(getShop).put(requirePermission(PERMISSIONS.SHOP_SETTINGS), updateShop);
 
+// Owner-facing: submit a plan + payment proof for review. Activation itself
+// is admin-only - see /api/admin/shops/:shopId/subscription/activate.
 router.post('/subscription/request-upgrade', requirePermission(PERMISSIONS.SHOP_SETTINGS), requestSubscriptionUpgrade);
-router.post('/subscription/activate', requirePermission(PERMISSIONS.SHOP_SETTINGS), activateSubscription);
+
+// Read-only for any signed-in user (not owner-gated) - every shop needs to
+// see the same operator-owned accounts to pay into. Editing is admin-only,
+// see /api/admin/payment-accounts.
+router.get('/payment-accounts', getPaymentAccounts);
 
 // Exposed so the staff UI can render the permission checkboxes from one source
 // of truth rather than duplicating the list on the client.

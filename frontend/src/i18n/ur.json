@@ -3,6 +3,7 @@
     "dashboard": "ڈیش بورڈ",
     "pos": "کاؤنٹر",
     "inventory": "اسٹاک",
+    "expiryAlerts": "میعاد ختم الرٹس",
     "sales": "فروخت",
     "purchases": "خریداری",
     "suppliers": "سپلائرز",
@@ -12,7 +13,8 @@
     "settings": "سیٹنگز",
     "categories": "اقسام",
     "staff": "عملہ",
-    "profile": "پروفائل"
+    "profile": "پروفائل",
+    "branches": "شاخیں"
   },
   "common": {
     "add": "شامل کریں",

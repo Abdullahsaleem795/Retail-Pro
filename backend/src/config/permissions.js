@@ -20,6 +20,8 @@ const PERMISSIONS = {
   STAFF_MANAGE: 'staff:manage',
   SHOP_SETTINGS: 'shop:settings',
   NOTIFICATION_SEND: 'notification:send',
+  BRANCH_MANAGE: 'branch:manage',
+  CUSTOMER_MANAGE: 'customer:manage',
 };
 
 const ALL_PERMISSIONS = Object.values(PERMISSIONS);
@@ -37,6 +39,8 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.SALE_REFUND,
     PERMISSIONS.REPORT_VIEW,
     PERMISSIONS.NOTIFICATION_SEND,
+    PERMISSIONS.BRANCH_MANAGE,
+    PERMISSIONS.CUSTOMER_MANAGE,
   ],
   cashier: [],
 };

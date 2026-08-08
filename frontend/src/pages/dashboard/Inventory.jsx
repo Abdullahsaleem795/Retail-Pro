@@ -4,6 +4,7 @@ import { listProducts, createProduct, updateProduct, deleteProduct } from '../..
 import { listCategories, createCategory } from '../../api/categories';
 import ProductFormModal from '../../components/ProductFormModal';
 import ConfirmModal from '../../components/ConfirmModal';
+import BulkImportModal from '../../components/BulkImportModal';
 import './Inventory.css';
 
 export default function Inventory() {
@@ -14,6 +15,7 @@ export default function Inventory() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [deletingProduct, setDeletingProduct] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -32,11 +34,15 @@ export default function Inventory() {
     return () => clearTimeout(timer);
   }, [fetchProducts]);
 
-  useEffect(() => {
-    listCategories()
+  const fetchCategories = useCallback(() => {
+    return listCategories()
       .then((res) => setCategories(res.data))
       .catch(() => toast.error('Failed to load categories'));
   }, []);
+
+  useEffect(() => {
+    fetchCategories();
+  }, [fetchCategories]);
 
   const handleSave = async (payload) => {
     try {
@@ -77,15 +83,20 @@ export default function Inventory() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Inventory</h1>
-        <button
-          className="btn-primary btn-inline"
-          onClick={() => {
-            setEditingProduct(null);
-            setModalOpen(true);
-          }}
-        >
-          + Add Product
-        </button>
+        <div className="page-header-actions">
+          <button className="btn-secondary btn-inline" onClick={() => setImportOpen(true)}>
+            Import Products
+          </button>
+          <button
+            className="btn-primary btn-inline"
+            onClick={() => {
+              setEditingProduct(null);
+              setModalOpen(true);
+            }}
+          >
+            + Add Product
+          </button>
+        </div>
       </div>
 
       <input
@@ -122,9 +133,9 @@ export default function Inventory() {
                 const isLowStock = p.stockQuantity <= p.lowStockThreshold;
                 return (
                   <tr key={p._id}>
-                    <td>{p.name}</td>
+                    <td className="truncate" title={p.name}>{p.name}</td>
                     <td>{p.sku}</td>
-                    <td>{p.categoryId?.name || '-'}</td>
+                    <td className="truncate" title={p.categoryId?.name}>{p.categoryId?.name || '-'}</td>
                     <td>
                       <span className={isLowStock ? 'badge badge-warning' : 'badge badge-ok'}>
                         {p.stockQuantity} {p.unit}
@@ -174,6 +185,16 @@ export default function Inventory() {
           confirmText="Delete Product"
           onConfirm={handleDeleteConfirm}
           onClose={() => setDeletingProduct(null)}
+        />
+      )}
+
+      {importOpen && (
+        <BulkImportModal
+          onClose={() => setImportOpen(false)}
+          onImported={() => {
+            fetchProducts();
+            fetchCategories();
+          }}
         />
       )}
     </div>

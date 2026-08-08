@@ -14,6 +14,8 @@ const emptyForm = {
   sellingPrice: '',
   stockQuantity: '',
   lowStockThreshold: '10',
+  expiryDate: '',
+  expiryAlertDays: '',
 };
 
 export default function ProductFormModal({ product, categories, onCreateCategory, onSave, onClose }) {
@@ -29,6 +31,11 @@ export default function ProductFormModal({ product, categories, onCreateCategory
           sellingPrice: product.sellingPrice,
           stockQuantity: product.stockQuantity,
           lowStockThreshold: product.lowStockThreshold,
+          // Dates come back from the API as a full ISO timestamp
+          // ("2026-08-05T00:00:00.000Z") - a <input type="date"> only
+          // accepts the plain "YYYY-MM-DD" portion.
+          expiryDate: product.expiryDate ? String(product.expiryDate).slice(0, 10) : '',
+          expiryAlertDays: product.expiryAlertDays ?? '',
         }
       : emptyForm
   );
@@ -56,6 +63,10 @@ export default function ProductFormModal({ product, categories, onCreateCategory
         lowStockThreshold: Number(form.lowStockThreshold),
         categoryId: form.categoryId || undefined,
         barcode: form.barcode || undefined,
+        expiryDate: form.expiryDate || undefined,
+        // '' means "leave whatever was set before untouched"; an explicit 0
+        // means "turn the alert off" - those need to stay distinguishable.
+        expiryAlertDays: form.expiryAlertDays === '' ? undefined : Number(form.expiryAlertDays),
       });
     } finally {
       setSaving(false);
@@ -183,6 +194,25 @@ export default function ProductFormModal({ product, categories, onCreateCategory
                 min="0"
                 value={form.lowStockThreshold}
                 onChange={handleChange}
+              />
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label>Expiry Date (optional)</label>
+              <input name="expiryDate" type="date" value={form.expiryDate} onChange={handleChange} />
+            </div>
+            <div className="form-field">
+              <label>Expiry Alert (days before)</label>
+              <input
+                name="expiryAlertDays"
+                type="number"
+                min="0"
+                placeholder="e.g. 7"
+                value={form.expiryAlertDays}
+                onChange={handleChange}
+                disabled={!form.expiryDate}
               />
             </div>
           </div>

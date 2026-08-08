@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import apiClient from '../api/client';
+import apiClient, { clearAuthTokens } from '../api/client';
 import { AuthContext } from './authContextDef';
+import { rememberUser } from '../utils/quickSwitch';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -28,7 +29,7 @@ export function AuthProvider({ children }) {
       try {
         await refreshUser();
       } catch {
-        localStorage.clear();
+        clearAuthTokens();
       } finally {
         setLoading(false);
       }
@@ -43,6 +44,22 @@ export function AuthProvider({ children }) {
     setUser(data.user);
     setShop(data.shop);
     setPermissions(data.permissions || []);
+    rememberUser({ id: data.user.id, name: data.user.name, role: data.user.role, email: data.user.email, shopName: data.shop?.name });
+    return data;
+  }, []);
+
+  // Quick-switch: re-authenticate as a different staff member on the same
+  // shared PC with a short PIN instead of a full email+password login. See
+  // frontend/src/utils/quickSwitch.js for the local "who's used this
+  // browser" list this reads from.
+  const pinLogin = useCallback(async (userId, pin) => {
+    const { data } = await apiClient.post('/auth/pin-login', { userId, pin });
+    localStorage.setItem('accessToken', data.accessToken);
+    localStorage.setItem('refreshToken', data.refreshToken);
+    setUser(data.user);
+    setShop(data.shop);
+    setPermissions(data.permissions || []);
+    rememberUser({ id: data.user.id, name: data.user.name, role: data.user.role, email: data.user.email, shopName: data.shop?.name });
     return data;
   }, []);
 
@@ -53,11 +70,12 @@ export function AuthProvider({ children }) {
     setUser(data.user);
     setShop(data.shop);
     setPermissions(data.permissions || []);
+    rememberUser({ id: data.user.id, name: data.user.name, role: data.user.role, email: data.user.email, shopName: data.shop?.name });
     return data;
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.clear();
+    clearAuthTokens();
     setUser(null);
     setShop(null);
     setPermissions([]);
@@ -73,6 +91,7 @@ export function AuthProvider({ children }) {
         permissions,
         loading,
         login,
+        pinLogin,
         register,
         logout,
         refreshUser,

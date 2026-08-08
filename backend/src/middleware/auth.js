@@ -26,7 +26,8 @@ const protect = asyncHandler(async (req, res, next) => {
   }
 
   const { rows } = await query(
-    'SELECT id, shop_id, name, email, phone, role, permissions, is_active FROM users WHERE id = $1',
+    `SELECT id, shop_id, name, email, phone, role, permissions, is_active, (pin IS NOT NULL) AS has_pin
+     FROM users WHERE id = $1`,
     [decoded.userId]
   );
   const user = mapRow(rows[0]);

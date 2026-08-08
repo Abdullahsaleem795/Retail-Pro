@@ -5,18 +5,21 @@ project context from conversation history.** Update both whenever something chan
 deployment status flip, a bug fix, a new module. Don't let this go stale; a wrong graph is worse than
 no graph.
 
-_Last updated: 2026-08-08 — feature + polish pass on top of the 2026-08-05 pass. Added Expiry Date
-Alerts (owner-configured per-product threshold, only surfaces once actually triggered) and Bulk
-Product CSV Import (upsert-by-SKU, per-row validation, auto-category-create+dedup, tested twice —
-direct API and real browser file upload). Fixed a chain of POS cart bugs surfaced via user
-screenshots — undersized touch targets, two distinct alignment bugs (glyph-centering, then per-row
-`auto` grid columns), a scroll-to-top regression, and a name-truncation-plus-scrollbar-overlap bug —
-each root-caused individually rather than patched cosmetically. Converted Payment Method to a native
-dropdown, changed the sidebar to grey, and fixed the one real bug found in a full responsive audit
-(topbar overflow at mobile widths). A "Target and Suggestion" profit-goal feature was scoped and
-explicitly deferred by the user, not built. See the new dated section below for detail. All UI fixes
-verified live with real DOM measurements (`getComputedStyle`, `getBoundingClientRect`, `scrollY`),
-not just visual screenshot judgment, and all test data was cleaned up after verification._
+_Last updated: 2026-08-09 — feature + redesign pass on top of the 2026-08-08 pass. Added a POS
+post-checkout receipt modal (Print via browser dialog / Bluetooth thermal / PDF, working for both
+online and offline-queued sales) — previously there was no way to hand a customer a receipt from POS
+at all. Changed POS Discount from a flat Rs amount to a percentage that auto-computes the Rs discount
+and total. Redesigned Dashboard Home and Sales (as an "Orders"-style view) to match a reference
+admin-dashboard screenshot the user shared — new `StatCard` and `PaymentBadge` components, a real
+`GET /api/sales/summary` aggregate endpoint, CSV export, row checkboxes — then fixed three rounds of
+follow-up visual-quality complaints on that redesign: "rough"-looking sparklines (root cause was real
+sparse sales data drawing a misleading spike through a zero-filled line chart — switched to daily
+bars), the same root cause on the big 14-day trend chart (plus a "natural" curve-type experiment that
+overshot below the zero baseline — reverted to `monotone`), and an uneven 6-card stat grid (auto-fit
+stranding one card alone on its own row, plus inconsistent row-to-row card heights — fixed with a
+scoped fixed-column grid and a fixed card height). See the new dated section below for detail. Every
+fix was verified against real DOM measurements or a fresh DB query after each complaint, not assumed
+correct from a screenshot._
 
 ---
 
@@ -322,6 +325,68 @@ mirrored into `schema.sql` (which had drifted from the live DB — see Decision 
 
 ---
 
+## 2026-08-09 pass: POS receipt printing, percentage discount, dashboard/sales redesign
+
+1. **New: POS post-checkout receipt modal.** User pointed out a real gap — after a POS checkout there
+   was no way to give the customer a receipt at all, the cart just cleared silently. Added a modal
+   that opens right after checkout with three options: **Print** (`window.print()` with a
+   `@media print` rule that hides everything except the receipt, so the physical printout is clean),
+   **Print via Bluetooth** (reused the existing `ThermalPrintButton`, previously only on the Sales
+   history page), and **Download PDF** (reused the existing receipt endpoint). Works for offline-queued
+   sales too — a receipt is built from the local cart data since a shopkeeper still needs a paper
+   receipt even with no internet; PDF download is disabled with a note until that sale syncs and gets
+   a real server id.
+2. **Changed: POS Discount from a flat Rs amount to a percentage.** Owner types e.g. `10` for 10% and
+   the Rs discount + final total compute automatically from the cart subtotal, clamped 0–100%.
+   Backend/receipt still only ever see the resulting Rs amount — pure frontend input-model change.
+3. **Redesigned Dashboard Home + Sales, adapted from a reference screenshot.** User shared a
+   third-party admin-dashboard screenshot (Qcomart template) and asked for "UI exact like this, but
+   adjust according to our web app data." Scoped via two clarifying questions first — which pages
+   (chose Dashboard + Sales, matching the two screenshots shown) and whether to also restyle the
+   sidebar to the reference's white look (kept the grey the user had explicitly set earlier this
+   session instead). Built:
+   - **`StatCard`** (`frontend/src/components/StatCard.jsx`) — label, static period tag, big value,
+     optional sparkline. Sparkline is opt-in and only used for metrics with real daily history behind
+     them (today's sales/transactions) — point-in-time snapshots (stock value, low-stock count) render
+     without one rather than fake a trend line.
+   - **`PaymentBadge`** (`frontend/src/components/PaymentBadge.jsx`) — colored dot + label per payment
+     method, deliberately not literal card-network/JazzCash/EasyPaisa logos (no safe asset to embed).
+   - **Sales page redesigned as an "Orders"-style view**: 4 stat cards backed by a new
+     `GET /api/sales/summary` real aggregate (not a client-side count of whatever page happens to be
+     loaded — that would silently under-report for shops with more than 50 sales), row checkboxes +
+     header select-all, a real CSV **Export** of the checked/filtered rows, and a **+ New Sale**
+     shortcut straight to POS. Receipt modal, refund flow, and PDF/thermal print were left untouched.
+4. **Fixed: stat-card sparklines looked "rough."** Queried the live DB first rather than guessing at a
+   rendering tweak — the demo shop only has sales on 5 of the last 14 days, so a zero-filled
+   Area/Line chart was accurately but unflatteringly drawing a sharp spike-then-flat-line shape
+   through 9 real zero-days. Switched to a small daily **bar** chart (older bars fade slightly toward
+   today) — bars represent the same gappy data as normal-looking quiet-day bars instead of what read
+   as a broken line.
+5. **Fixed: the "Sales — Last 14 Days" chart drew a misleading spike.** Same root cause as #4 — the
+   raw trend data only had 5 of 14 days, so Recharts spaced those sparse points evenly across what
+   was really a 10-day gap. Zero-filled all 14 days, added compact Y-axis labels (`32k` not `32000`),
+   nicer x-axis date labels at every-other-day intervals, and a smoother hover tooltip/active-dot.
+   Tried curve type `natural` for extra smoothness first — it visibly overshot *below* the zero
+   baseline right after the sharp post-peak drop (a known cubic-spline artifact) — reverted to
+   `monotone`, which is specifically designed to never overshoot.
+6. **Fixed: the 6 dashboard stat cards laid out unevenly.** The shared `.stat-grid`'s `auto-fit`
+   column sizing picks however many columns fit the container width; at some widths that was 5,
+   stranding the 6th card (Pending Purchases) alone on row 2 with a wide empty gap. Added a
+   `.dashboard-stat-grid` override with a **fixed** column count per breakpoint (3 desktop / 2 tablet /
+   1 mobile — all exact divisors of 6), scoped to the Dashboard only so Sales' 4-card and Reports'
+   5-card grids (still on plain `.stat-grid`) were untouched. Also fixed a related alignment bug found
+   in the same pass: a longer label ("Transactions Today") was wrapping to 2 lines while shorter
+   sibling labels stayed on 1, pushing that card's value out of alignment — labels now stay single-line
+   with an ellipsis fallback. Finally, cards with a sparkline (more content) were rendering taller than
+   plain-number cards in a *different* row — CSS Grid only stretches items to match within their own
+   row — fixed with a **fixed** `height: 168px` on every card instead of `min-height`.
+   Verified with real measurements after each fix: computed `grid-template-columns` per breakpoint,
+   `getBoundingClientRect()` heights (all 6 cards = 168px), label heights (all single-line), and a
+   live DOM path/stroke inspection to rule out a suspected sparkline color bug that turned out to just
+   be anti-aliasing at 36px height.
+
+---
+
 ## Key facts an agent should know before touching this project
 
 - **This Supabase project hosts another, unrelated app** in the `public` schema. RetailPro lives entirely
@@ -530,6 +595,37 @@ frontend/src/
 └── api/products.js                    + getExpiryAlerts, bulkImportProducts
 ```
 
+### New/changed in the 2026-08-09 pass (not yet reflected in the tree above)
+
+```
+backend/src/
+├── controllers/saleController.js      + getSalesSummary (real aggregate: total/new/completed/
+│                                         refunded counts, cache key `${shopId}:summary` so
+│                                         clearShopSalesCache's prefix match also invalidates it)
+└── routes/saleRoutes.js               + GET /sales/summary (before /:id)
+
+frontend/src/
+├── components/StatCard.jsx            NEW - label + period tag + value + optional daily-bar
+│                                         sparkline (only for metrics with real history)
+├── components/StatCard.css            NEW
+├── components/PaymentBadge.jsx        NEW - colored dot + label per payment method
+├── components/PaymentBadge.css        NEW
+├── api/sales.js                       + getSalesSummary
+├── pages/dashboard/DashboardHome.jsx  Stat cards rebuilt on StatCard; 14-day trend now zero-filled,
+│                                         compact axis labels, monotone curve (not natural - see
+│                                         2026-08-09 pass notes); .dashboard-stat-grid fixed 3/2/1
+│                                         column layout
+├── pages/dashboard/DashboardHome.css  + .dashboard-stat-grid breakpoint rules
+├── pages/dashboard/Sales.jsx          Redesigned as an "Orders"-style view - StatCard row, row
+│                                         checkboxes + select-all, CSV Export, PaymentBadge in the
+│                                         Payment column, "+ New Sale" link to POS
+├── pages/dashboard/Sales.css          NEW - .checkbox-col, .sales-stat-grid
+├── pages/dashboard/POS.jsx            + post-checkout receipt modal (Print/Bluetooth/PDF, works
+│                                         offline too); Discount field changed from Rs to percent
+│                                         (discountPercent state, clamped 0-100)
+└── pages/dashboard/POS.css            + .pos-receipt-print styles and @media print isolation rules
+```
+
 ---
 
 ## Open items
@@ -573,6 +669,19 @@ frontend/src/
 - [x] ~~Convert Payment Method to a dropdown defaulting to Cash~~ — done 2026-08-08
 - [x] ~~Change sidebar color~~ — done 2026-08-08
 - [x] ~~Full site-wide responsive audit~~ — done 2026-08-08, one real bug found (topbar overflow) and fixed
+- [x] ~~Add a way to print/hand over a receipt from POS~~ — done 2026-08-09 (Print dialog, Bluetooth,
+      PDF; works for offline-queued sales too)
+- [x] ~~Change POS Discount to a percentage instead of a flat Rs amount~~ — done 2026-08-09
+- [x] ~~Redesign Dashboard + Sales to match the user's reference screenshot~~ — done 2026-08-09
+      (StatCard/PaymentBadge components, real sales-summary aggregate, CSV export)
+- [x] ~~Fix "rough"-looking dashboard sparklines and the 14-day trend chart~~ — done 2026-08-09 (root
+      cause was real sparse data, not a rendering bug; see 2026-08-09 pass notes for the `natural`
+      curve overshoot lesson)
+- [x] ~~Fix the uneven/lopsided 6-card dashboard stat grid~~ — done 2026-08-09 (fixed 3/2/1-column
+      layout + fixed card height, scoped to the Dashboard only)
+- [ ] **Push local `main` to `origin/main`** — as of 2026-08-09, local is 2 commits ahead
+      (`857ed9a`, `4929a31`) covering the platform-admin/branches/payment-scaffold pass and this
+      POS-receipt/dashboard-redesign pass; not yet pushed, only committed locally
 
 **Deferred by explicit user instruction, not built:** the "Target and Suggestion" monthly profit-goal
 feature (owner sets a target, app compares to actual profit and suggests products/strategy) — see

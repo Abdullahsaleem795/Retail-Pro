@@ -1,7 +1,7 @@
 {
   "project": "RetailPro",
   "description": "Multi-tenant inventory & POS SaaS for Pakistani SME retail shops",
-  "lastUpdated": "2026-07-28 (backend pivoted to Vercel Serverless by user directly; ConfirmModal UX pattern added)",
+  "lastUpdated": "2026-08-08 (feature + polish pass on top of 2026-08-05: added Expiry Date Alerts (products.expiry_alert_days, triggers only when expiry_date - today <= alert threshold, groups by threshold, red/yellow urgency badges); added Bulk Product CSV Import (PapaParse client-side parse, upsert-by-SKU with insert-vs-update detection, per-request category auto-create+dedup cache, per-row independent validation with a row-number-accurate error table, tested twice - direct API and real browser file upload); fixed a cluster of POS cart bugs found via user screenshots - remove/qty buttons undersized below the ~44px touch-target guidance (was the real cause of 'remove doesn't work'), +/- vertical-centering inconsistent with the already-centered remove button, a scroll-to-top-on-every-click regression (focus() with no preventScroll on the barcode-scanner refocus call), cart row columns computing different x-positions row-to-row (each .pos-cart-item was its own independent CSS grid with auto-sized columns), and finally severe name truncation + a scrollbar-arrow-chrome icon overlapping the remove button at the fixed-380px desktop cart width; converted Payment Method from an always-visible chip row to a native <select> defaulting to Cash; changed the sidebar from dark navy to grey with adjusted text contrast; ran a full site-wide responsive audit and fixed the one real bug found (topbar had zero responsive handling, overflowed at <=768px). A 'Target and Suggestion' monthly-profit-goal/strategy feature was scoped and explained to the user but explicitly deferred ('leave it fo now') - not built, see decisionLog. All UI fixes verified live via browser automation with real getBoundingClientRect()/getComputedStyle() measurements, not just visual screenshot judgment; all test data cleaned up after verification.)",
   "howToUse": "This is the source of truth for project state. Read this file (and knowledge-graph.md for the narrative view) before re-deriving context from conversation history. UPDATE this file whenever a node's state changes, a decision is made, a bug is fixed, or a new task starts - append/edit, don't wait to batch. Keep nodes atomic and edges directional (from -> to).",
 
   "nodes": [
@@ -9,7 +9,7 @@
         "url": "https://github.com/Abdullahsaleem795/Retail-Pro",
         "owner": "Abdullahsaleem795",
         "branch": "main",
-        "latestCommit": "2629126",
+        "latestCommit": "471ac7c (working tree has the 2026-08-03 hardening pass, not yet committed - see lastUpdated)",
         "localPath": "C:\\Users\\Abdullah Saleem\\Desktop\\Retail Pro"
     }},
 
@@ -87,7 +87,21 @@
         "transactional": "SELECT...FOR UPDATE row locks + Postgres transaction; oversell/rollback verified",
         "offline": "sales queue to IndexedDB when offline, sync on reconnect/60s interval/manual retry"
     }},
-    { "id": "feature_barcode",   "type": "feature", "label": "Barcode scanning", "properties": { "modes": "hardware wedge scanner, camera scan (lazy-loaded, needs HTTPS or localhost)" } },
+    { "id": "feature_barcode",   "type": "feature", "label": "Barcode scanning", "properties": {
+        "modes": "hardware wedge scanner (POS.jsx handleBarcodeEnter, keyboard-emulation, always-focused search input), camera scan (frontend/src/components/BarcodeScanner.jsx, lazy-loaded, needs HTTPS or localhost)",
+        "cameraEngine_20260805": "Rebuilt on @zxing/browser + @zxing/library (was html5-qrcode) per explicit user request. POSSIBLE_FORMATS restricted to retail 1D formats (EAN_13, EAN_8, UPC_A, UPC_E, CODE_128, CODE_39, ITF, CODABAR). Deliberately NOT using DecodeHintType.TRY_HARDER - see zxing_tryharder_bug node.",
+        "strictModeRace_20260805": "React 18 StrictMode's dev-mode double-effect-invoke was found causing two concurrent camera instances to write into the same DOM target, TWICE, in two different shapes: (1) with html5-qrcode, two <video> elements got appended into the same container div, visible as a doubled/frozen feed; (2) after switching to ZXing (which uses a React-owned <video> ref instead of a DOM-id string), ZXing's controls.stop() unconditionally clears the shared video element's srcObject (cleanVideoSource) - not scoped to 'its own' stream - so the two StrictMode phantom instances fought over the same element again, and whichever's delayed stop-cleanup fired last wiped out the other's already-working feed. Fixed with a teardownChainRef (a useRef holding a promise chain) that serializes start/stop across effect invocations - each new instance's startCamera() first awaits the PREVIOUS instance's full teardown promise before touching the shared video ref, guaranteeing no overlap regardless of StrictMode's double-invoke timing.",
+        "scanBoxFix_20260805": "The qrbox/scan-region was a small fixed 300x200px patch, centered in the frame - the decoder never even looks outside it. A user screenshot showed a real barcode sitting in the corner of frame, well outside the box, which is why it never detected despite being clearly visible. Changed to a function-based qrbox sized to ~90% of the actual video frame dimensions (html5-qrcode era) / equivalent framing guidance in the ZXing rebuild, making alignment far more forgiving.",
+        "offlineDecodeProof_20260805": "Proved the decode pipeline itself is correct independent of any camera/lighting variable: hand-built a bit-perfect, checksum-valid EAN-13 barcode bit pattern directly from the EAN-13 spec (@zxing/library has no built-in 1D encoder to auto-generate one - only QR/DataMatrix/Aztec writers are exported), fed it through the exact MultiFormatReader config the app uses (same hints, same format restriction), and it decoded correctly (frontend, node -e test, not committed as a test file). This isolates any remaining real-world scan failures to camera capture conditions (focus/lighting/distance/motion), not application code.",
+        "beep": "frontend/src/utils/beep.js - Web Audio API synthesized tone, no audio asset - plays on successful add-to-cart for both the camera-scan and hardware-scanner/manual-entry paths (POS.jsx handleScanned/handleBarcodeEnter)",
+        "STATUS_NOT_YET_CONFIRMED": "As of 2026-08-05, every known code-level bug has been found and fixed, and the decode logic is proven correct offline - but a live successful scan of a REAL physical barcode via the actual camera was never confirmed working by the user in this pass. Do not claim this feature fully works end-to-end until that happens - see knowledge-graph.md Open items."
+    }},
+    { "id": "zxing_tryharder_bug", "type": "bugfix", "label": "@zxing/browser 0.2.1 TRY_HARDER bug (upstream, worked around)", "properties": {
+        "foundDuring": "2026-08-05 barcode scanner rebuild, while investigating console warnings during live camera testing",
+        "bug": "HTMLCanvasElementLuminanceSource.getTempCanvasElement() checks 'if (null === this.tempCanvasElement)' to lazily create a temp canvas, but the field is never initialized to null anywhere in the constructor - it's actually undefined. undefined !== null (strict equality), so the lazy-creation branch never executes, and rotate() immediately hits 'if (!tempCanvasElement) throw new Error(\"Could not create a Canvas element.\")'. This fires on EVERY decode frame whenever DecodeHintType.TRY_HARDER is set, because TRY_HARDER is what triggers OneDReader's rotation-based retry path for 1D barcodes.",
+        "verifiedNotFixedUpstream": "Checked npm view @zxing/browser versions / @zxing/library versions - 0.2.1 and 0.23.0 respectively are the latest published releases as of 2026-08-05, so this is not an outdated-dependency problem; the bug is present in the current latest release.",
+        "workaround": "Simply don't set DecodeHintType.TRY_HARDER. Trade-off: TRY_HARDER is specifically meant to help recover marginal/blurry/rotated reads, which is exactly the kind of image quality problem a fixed-focus laptop webcam produces - so this is a real capability loss, not a free fix. Revisit if a future @zxing/browser release fixes the underlying field initialization."
+    }},
     { "id": "feature_reports",   "type": "feature", "label": "Reports / AI intelligence", "properties": {
         "views": "dashboard, sales-trend, profit, best-sellers, dead-stock, fast-moving, low-margin, reorder-suggestions"
     }},
@@ -105,18 +119,18 @@
         "config": "backend/render.yaml",
         "requiredEnvVars": "DATABASE_URL (Supabase pooler string), JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, CLIENT_URL, NODE_ENV=production"
     }},
-    { "id": "deploy_vercel_backend", "type": "deployment_target", "label": "Vercel Serverless (backend) - ACTIVE PLAN", "properties": {
-        "status": "NOT YET DEPLOYED, but configured (commit e837f35, made by the user directly, not by an agent)",
+    { "id": "deploy_vercel_backend", "type": "deployment_target", "label": "Vercel Serverless (backend) - LIVE", "properties": {
+        "status": "✅ DEPLOYED & VERIFIED LIVE (checked 2026-08-02: GET https://retail-pro-backend.vercel.app/api returns {success:true, message:'RetailPro API is running'})",
+        "url": "https://retail-pro-backend.vercel.app/api",
         "config": "backend/vercel.json (rewrites /api/* -> /api/index.js), backend/api/index.js (exports the Express app, no app.listen())",
-        "likelySetup": "A SEPARATE Vercel project from the frontend one, root directory 'backend' - backend/vercel.json is self-contained with its own rewrites. Not yet confirmed by an actual deployment.",
-        "criticalCaveat": "backend/api/index.js exports `app` directly and never calls server.js's connectDB()/startScheduler(). node-cron (WhatsApp low-stock/daily/weekly reports, feature_whatsapp) needs a long-running process and WILL NOT FIRE under Vercel serverless - each invocation is ephemeral. If WhatsApp automation matters under this deployment, it needs to move to Vercel Cron Jobs (a separate, real Vercel feature) calling dedicated HTTP endpoints, or a small always-on worker elsewhere. This has not been raised with the user yet - flagged here for visibility, not silently fixed.",
-        "poolSizingCaveat": "config/db.js's pg.Pool still uses max:10, sized for a long-running server. Under serverless, each cold-start container gets its OWN pool, so concurrent invocations could multiply toward Supabase's pooler connection cap faster than on a single Render instance. Worth revisiting (commonly max:1 + Supabase's transaction-mode pooler on 6543 for serverless) before real load - not yet changed."
+        "criticalCaveatRESOLVED_20260803": "FIXED in the 2026-08-03 hardening pass. backend/api/index.js still never calls startScheduler() (correct - node-cron genuinely cannot run on serverless), but backend/src/routes/cronRoutes.js now exposes GET /api/cron/{low-stock,daily-report,weekly-report}, secret-gated via CRON_SECRET (fails closed if unset), and backend/vercel.json's new \"crons\" array hits them on the same schedule the old node-cron used (03:00/16:00/16:00-Sun UTC = 08:00/21:00/21:00-Sun PKT). This is the real fix, not the wa.me workaround. REQUIRES an operator action: CRON_SECRET must be set as a Vercel project env var (same value backend/.env uses) for Vercel's own Cron Jobs to authenticate - not yet confirmed set on the actual Vercel project, only implemented and locally verified (curled with the correct/incorrect secret, 200/401 as expected).",
+        "poolSizingCaveat": "config/db.js's pg.Pool still uses max:10, sized for a long-running server, not revisited for serverless cold starts. Composite indexes were added for query perf (commit 4ff1869, 3c200f5) but pool sizing itself is unchanged - still an open item before heavy concurrent load."
     }},
-    { "id": "deploy_vercel_frontend",  "type": "deployment_target", "label": "Vercel (frontend)", "properties": {
-        "status": "NOT YET DEPLOYED",
+    { "id": "deploy_vercel_frontend",  "type": "deployment_target", "label": "Vercel (frontend) - LIVE", "properties": {
+        "status": "✅ DEPLOYED & VERIFIED LIVE (checked 2026-08-02: GET https://retail-pro-blush.vercel.app returns the React SPA shell)",
+        "url": "https://retail-pro-blush.vercel.app",
         "config": "frontend/vercel.json",
-        "vercelAccount": "team_9pc2EPB8Uci61AOwmUmoPxTt (abdullahsaleem795's projects) - no existing 'retailpro' project there yet as of last check",
-        "deploymentMethod": "Vercel dashboard 'Import Git Repository' (connect to Abdullahsaleem795/Retail-Pro, root directory 'frontend'), NOT the deploy_to_vercel MCP tool - see decisionLog"
+        "deploymentMethod": "Vercel dashboard 'Import Git Repository' (connect to Abdullahsaleem795/Retail-Pro, root directory 'frontend')"
     }},
 
     { "id": "demo_account_owner",   "type": "credential", "label": "Demo owner login", "properties": { "email": "demo@retailpro.pk", "password": "demo1234", "shop": "Al-Madina Kiryana Store" } },
@@ -143,7 +157,179 @@
         "framework": "Jest + supertest",
         "count": 48,
         "files": "tests/{auth,tenancy,permissions,sales}.test.js",
-        "runtime": "~4-5 min against live Supabase (network round-trip bound, not stuck - verify via pg_stat_activity if a run seems slow)"
+        "runtime": "~4-5 min against live Supabase (network round-trip bound, not stuck - verify via pg_stat_activity if a run seems slow)",
+        "note": "Not re-run during this 2026-08-02 audit (no local .env DB credentials verified in this session) - status per PROJECT_PROGRESS.md and QA_REPORT.md is 48/48 passing as of the last run."
+    }},
+
+    { "id": "feature_subscription_billing", "type": "feature", "label": "SaaS Subscription Billing", "properties": {
+        "addedBy": "commit 14629cf (2026-07-28)",
+        "files": "backend/src/controllers/shopController.js (requestSubscriptionUpgrade, activateSubscription), backend/src/routes/shopRoutes.js, frontend/src/pages/dashboard/Settings.jsx, frontend/src/api/shop.js",
+        "flow": "Shop owner picks a plan in Settings -> POST /api/shop/subscription/request-upgrade records last_payment_trx + subscription_status='pending_activation', logs an in-app notification, and returns a prefilled wa.me link to send payment proof to the admin's WhatsApp (ADMIN_WHATSAPP env, default 923056779779).",
+        "activationRESOLVED_20260803": "The old POST /api/shop/subscription/activate (self-service, gated only by the caller's own shop:settings permission) is REMOVED. Activation now lives at POST /api/admin/shops/:shopId/subscription/activate, gated by requirePlatformAdmin (backend/src/middleware/platformAdmin.js) - a PLATFORM_ADMIN_KEY header only the platform operator holds, fails closed if unset. A shop owner can no longer activate their own paid plan. Verified end-to-end via a real browser walkthrough: request upgrade in Settings -> appears in /admin's pending list -> Activate -> shop's subscriptionStatus flips to active, disappears from pending. See admin_console node.",
+        "twoLiveBugsFoundAndFixed_20260803": "Auditing this feature against the LIVE Supabase schema (not just the code) found it was actually broken in production: (1) requestSubscriptionUpgrade inserted notifications.type='subscription', but the live notifications_type_check constraint didn't allow that value - every real call 500'd. (2) Settings.jsx offers a 'basic' plan tier but shops_subscription_plan_check only allowed free/pro/enterprise - requesting/activating Basic would also have 500'd. Both fixed via a live Supabase migration (fix_subscription_and_branch_transfers) + mirrored into backend/src/db/schema.sql so the Jest test schema matches. This is also why schema.sql had drifted from the live DB before this pass - subscription_status/subscription_ends_at/last_payment_trx existed live but were never added to schema.sql, so retailpro_test (rebuilt from schema.sql for every test run) didn't have them either.",
+        "paymentGateway": "Still not a real payment integration - see payment_provider_scaffold node for what was added.",
+        "tiers": "Basic / Pro / Enterprise (schema and Settings.jsx now agree on these three - see twoLiveBugsFoundAndFixed_20260803). Priced in PROJECT_OVERVIEW.md as a business doc, still not enforced anywhere in code as feature gates."
+    }},
+    { "id": "feature_whatsapp_wame", "type": "feature", "label": "WhatsApp wa.me deep-links (supplier orders, low stock, subscription)", "properties": {
+        "addedBy": "commit 67db8e7 (2026-07-28)",
+        "files": "backend/src/controllers/notificationController.js, backend/src/services/whatsappService.js, frontend/src/pages/dashboard/Suppliers.jsx",
+        "purpose": "Lets a cashier/owner click a button to open WhatsApp Web/App with a prefilled message (supplier reorder draft, low-stock alert) via https://wa.me/<phone>?text=..., no Cloud API call, no server credentials needed, always works.",
+        "relationToCloudApi": "Does NOT replace feature_whatsapp's automated node-cron Cloud API reports (still built, still broken under serverless) - this is a separate, user-triggered, always-functional path added specifically because the cron-based automation can't fire on Vercel serverless."
+    }},
+    { "id": "perf_optimization_pass", "type": "initiative", "label": "Performance optimization pass (commits 4ff1869 -> 471ac7c)", "properties": {
+        "scope": "5 commits over 2026-07-28/29: composite B-Tree indexes on sales/sale_items, consolidated /api/reports/dashboard-overview single endpoint (was N calls), in-memory POS search, SkeletonLoader components, React.memo on list-heavy components, Brotli/Gzip compression tuning, idle-time + hover link prefetching for instant section switches.",
+        "claimedResult": "Sub-300ms load across all dashboard sections, down to 0ms perceived nav via prefetch; figures are from the commit messages/PROJECT_PROGRESS.md, not independently re-benchmarked in this audit.",
+        "files": "frontend/src/layouts/DashboardLayout.jsx (prefetching), backend/src/controllers/reportController.js (dashboard-overview), backend/src/db/schema.sql (indexes), frontend/src/components (SkeletonLoader)"
+    }},
+    { "id": "qa_report", "type": "doc", "label": "QA_REPORT.md", "properties": {
+        "date": "2026-07-29",
+        "score": "100/100, all 10 findings across Auth/POS/Inventory/UI categories marked fixed",
+        "note": "Self-reported in the repo, not from an external QA process - treat as a checklist of what was addressed, not an independent audit."
+    }},
+    { "id": "project_progress_doc", "type": "doc", "label": "PROJECT_PROGRESS.md", "properties": {
+        "claimedCompletion": "~97% as of 2026-08-03 (was 95%) - two production-breaking bugs and one security gap fixed, three genuinely-missing features added",
+        "remainingItems": "Thermal printing needs real-hardware verification, live JazzCash/EasyPaisa merchant API still needs real credentials, self-service WhatsApp Cloud API credentials UI, Vercel Cron plan-limit unverified against actual account"
+    }},
+
+    { "id": "platform_admin_middleware", "type": "module", "label": "requirePlatformAdmin middleware", "properties": {
+        "file": "backend/src/middleware/platformAdmin.js",
+        "addedBy": "2026-08-03 hardening pass",
+        "purpose": "Gates /api/admin/* - checks x-admin-key header against PLATFORM_ADMIN_KEY env var. Fails closed (503) if the env var is unset, so it can never accidentally allow-all.",
+        "why": "Closes the subscription self-activation gap - see feature_subscription_billing.activationRESOLVED_20260803."
+    }},
+    { "id": "admin_console", "type": "feature", "label": "Platform admin console (/admin)", "properties": {
+        "files": "backend/src/controllers/adminController.js, backend/src/routes/adminRoutes.js, frontend/src/pages/AdminConsole.jsx",
+        "scope": "Cross-tenant by design - lists ALL shops (not scoped by req.shopId like every other controller), lets the platform operator activate/reject subscription requests with a plan+duration picker.",
+        "auth": "Separate from shop JWT auth entirely - a password-style key entry stored in sessionStorage, sent as x-admin-key on a standalone axios instance (frontend/src/pages/AdminConsole.jsx), verified in-browser via a real unlock -> list -> activate walkthrough on 2026-08-03.",
+        "routePlacement": "/admin sits OUTSIDE <ProtectedRoute> in App.jsx on purpose - it doesn't use a shop owner's JWT at all."
+    }},
+    { "id": "feature_branches", "type": "feature", "label": "Branches + stock transfer manifests", "properties": {
+        "addedBy": "2026-08-03 hardening pass",
+        "files": "backend/src/controllers/branchController.js, backend/src/routes/branchRoutes.js, frontend/src/pages/dashboard/Branches.jsx, frontend/src/api/branches.js",
+        "dbTables": "branches, stock_transfers, stock_transfer_items (new in schema.sql + live retailpro schema)",
+        "scopeDecision": "Deliberately manifest/logistics tracking (pending -> in_transit -> received) rather than splitting products.stock_quantity per branch - the latter would require rewriting the POS's SELECT...FOR UPDATE transactional stock-deduction path (saleController.js), the highest-risk/most-tested part of the app, which this pass intentionally left untouched. Inventory totals stay shop-wide.",
+        "permission": "branch:manage - new permission added to config/permissions.js, granted to manager role by default",
+        "backfill": "Every existing shop got one 'Main Branch' (is_default=true) via the same migration that created the tables, so nothing broke for shops that predate this feature.",
+        "verified": "Full create-branch -> create-transfer -> see-in-list flow tested via real browser interaction on 2026-08-03, not just curl."
+    }},
+    { "id": "feature_thermal_printing", "type": "feature", "label": "Thermal ESC/POS receipt printing (Web Bluetooth)", "properties": {
+        "addedBy": "2026-08-03 hardening pass",
+        "files": "frontend/src/utils/escpos.js (command builder), frontend/src/utils/useThermalPrinter.js (Web Bluetooth hook), frontend/src/components/ThermalPrintButton.jsx (UI, wired into Sales.jsx receipt modal alongside the existing PDF button)",
+        "browserSupport": "Chrome/Edge desktop or Android ONLY - navigator.bluetooth doesn't exist in Safari/iOS or Firefox by default; ThermalPrintButton renders a disabled explanatory message when unsupported instead of a broken button.",
+        "NOT_VERIFIED": "No physical ESC/POS thermal printer was available in this environment to test against. The command subset (ESC @, ESC a, ESC E, GS V) is the common cross-vendor baseline and the GATT service probing in useThermalPrinter.js tries several known candidate UUIDs rather than hardcoding one vendor, but this is UNTESTED against real hardware - flagged clearly in PROJECT_PROGRESS.md, do not claim this works until verified against an actual printer."
+    }},
+    { "id": "payment_provider_scaffold", "type": "module", "label": "Payment provider scaffold (JazzCash/EasyPaisa)", "properties": {
+        "addedBy": "2026-08-03 hardening pass",
+        "files": "backend/src/services/paymentProviders/{index,manualProvider,jazzcashProvider,easypaisaProvider}.js",
+        "honestyNote": "This is NOT a live gateway integration - no real JazzCash/EasyPaisa merchant credentials exist for this project. jazzcashProvider/easypaisaProvider throw a clear 'not configured' error and always lose to manualProvider in getProvider() until real env vars (JAZZCASH_MERCHANT_ID/PASSWORD/INTEGRITY_SALT, EASYPAISA_STORE_ID/HASH_KEY) are set. What's real: the correct integration shape (isConfigured()/createPaymentRequest()) so wiring in real credentials later doesn't require touching shopController.js again.",
+        "wiredInto": "requestSubscriptionUpgrade (shopController.js) now calls getProvider(paymentChannel).createPaymentRequest(...) - behavior-neutral today since it always resolves to manualProvider, verified via the full Jest suite still passing (48/48) after this wiring."
+    }},
+    { "id": "staff_permissions_bug_fix", "type": "bugfix", "label": "Staff.jsx grantable-permissions bug", "properties": {
+        "foundDuring": "2026-08-03 hardening pass, while checking that the new branch:manage permission would surface correctly in the Staff UI",
+        "bug": "Staff.jsx read res.grantablePermissions / res.roleDefaults from getGrantablePermissions(), but the actual API response shape is { success, data: { grantable, roleDefaults } } - so the 'Extra Permissions' checkbox list was ALWAYS empty. No shop owner could ever grant a custom permission to a cashier through this UI, for as long as this endpoint has existed.",
+        "fix": "One-line change to read res.data?.grantable / res.data?.roleDefaults instead. Verified in-browser: checkbox list now shows all 9 grantable permissions including the new branch:manage ('Manage branches & transfers')."
+    }},
+
+    { "id": "whatsapp_phone_normalization_bugfix", "type": "bugfix", "label": "WhatsApp phone number format bug (systemic, production-breaking)", "properties": {
+        "date": "2026-08-05",
+        "severity": "Every phone number in the live database (shops.whatsapp_number, suppliers.phone, customers.phone) was stored in local Pakistani format (03001234567, what a shopkeeper actually types), but both wa.me deep-links and the WhatsApp Cloud API require full international format with no leading trunk zero (923001234567). Passing local format straight through made wa.me show 'phone number shared via url is invalid' and would make a real Cloud API send fail outright with the wrong 'to' field. This silently broke EVERY WhatsApp touchpoint (supplier orders, low-stock alerts, daily/weekly reports, subscription payment-proof links) for any shop using real (non-demo) phone numbers.",
+        "fix": "Added normalizePakistaniPhone() to backend/src/services/whatsappService.js, applied inside BOTH sendTextMessage() (Cloud API path) and buildWhatsAppUrl() (wa.me path). Also found and fixed a SECOND, duplicated, unnormalized phone-cleaning implementation that had drifted into shopController.js's requestSubscriptionUpgrade - replaced with a call to the same shared buildWhatsAppUrl().",
+        "verified": "Live: Suppliers page's supplier-order button now generates a correct wa.me/923001234567 link (was wa.me/03001234567 before, which WhatsApp rejects as invalid). Re-tested all three cron endpoints (low-stock/daily/weekly) against a shop with fully local-format numbers - zero errors, correct international-format numbers in every generated link. Full 48-test Jest suite still passing."
+    }},
+    { "id": "feature_admin_payment_accounts", "type": "feature", "label": "Admin-editable subscription payment accounts", "properties": {
+        "date": "2026-08-05",
+        "problem": "JazzCash/EasyPaisa/bank account details shown to shop owners on the Settings billing card were hardcoded directly in frontend JSX - changing them required a code deploy, and there was no way to update them if the underlying account details changed.",
+        "files": "New platform_payment_accounts table (singleton pattern, id integer PRIMARY KEY DEFAULT 1 CHECK (id=1)), backend/src/controllers/adminController.js (getPaymentAccounts/updatePaymentAccounts), backend/src/controllers/shopController.js (getPaymentAccounts, shop-facing read), backend/src/routes/adminRoutes.js, backend/src/routes/shopRoutes.js, frontend/src/pages/AdminConsole.jsx (PaymentAccountsCard), frontend/src/pages/dashboard/Settings.jsx (fetches live instead of hardcoded), frontend/src/api/shop.js",
+        "auth": "GET/PUT /api/admin/payment-accounts gated by requirePlatformAdmin (same x-admin-key as the rest of /admin/*). GET /api/shop/payment-accounts is protect-only (any signed-in shop user can read, no owner-only gate, since every shop owner needs to see where to pay).",
+        "verified": "Live end-to-end: admin edits a field in /admin -> live DB row updates -> shop-facing Settings page reflects the change immediately on next load; a plain shop JWT gets 401 attempting the admin write endpoint."
+    }},
+    { "id": "settings_billing_redesign", "type": "polish", "label": "Settings.jsx Subscription & Billing card redesign", "properties": {
+        "date": "2026-08-05",
+        "trigger": "User flagged via screenshot: emoji-heavy plan cards, off-brand blue (#3b82f6) language toggle inconsistent with the app's actual green brand.",
+        "fix": "Rebuilt into frontend/src/pages/dashboard/Settings.css + class-based JSX, replacing ~250 lines of inline styles. Stripped all emoji from plan benefit lists. Uses the shared design-tokens system (frontend/src/styles/tokens.css) for colors/spacing/type scale.",
+        "relatedFix": "Also fixed a form-row label-alignment bug the user flagged separately via screenshot (a 2-line label like 'Transaction TRX ID / Reference #' wrapped and pushed its input out of alignment with same-row single-line-label siblings) - global fix in frontend/src/index.css scoped to '.form-row .form-field label' only, verified no regression on single-field forms elsewhere (e.g. Register page)."
+    }},
+    { "id": "notification_bell_unread_bugfix", "type": "bugfix", "label": "Notification bell never cleared the unread badge on open", "properties": {
+        "date": "2026-08-05",
+        "bug": "Opening the bell dropdown (NotificationBell.jsx handleToggle) re-fetched notifications but never called any mark-as-read endpoint - only clicking an INDIVIDUAL item did. So the badge count stayed stuck at N even after the shop owner had visibly opened and seen the full list, contradicting standard notification-bell UX convention (e.g. Gmail, Slack) where viewing the list clears the badge.",
+        "fix": "handleToggle now calls handleMarkAll() (which calls markAllNotificationsRead()) automatically right after fetching, whenever the panel opens.",
+        "verified": "Live: badge went from showing '2' to gone the moment the panel opened, and stayed cleared after a full page reload (confirmed server-side persisted, not just local React state)."
+    }},
+    { "id": "feature_notification_delete", "type": "feature", "label": "Per-notification delete", "properties": {
+        "date": "2026-08-05",
+        "problem": "Notifications could only ever be marked read, never removed - old test/low-stock alerts accumulated in the bell dropdown forever with no cleanup path.",
+        "files": "backend/src/controllers/notificationController.js (deleteNotification), backend/src/routes/notificationRoutes.js (DELETE /:id), frontend/src/api/notifications.js (deleteNotification), frontend/src/components/NotificationBell.jsx (delete '×' control per row, optimistic removal + rollback on failure)",
+        "auth": "No requirePermission gate - same trust level as GET/mark-as-read (any signed-in shop user can clear their own view of shop-wide alerts; this is about clutter, not a sensitive business record).",
+        "implementationNote": "The notification row had to change from a <button> to a <div role=\"button\"> because the new delete control is itself a <button>, and a <button> cannot legally nest inside another <button> in HTML.",
+        "verified": "Live: generated a fresh test alert, clicked delete, confirmed DELETE /api/notifications/:id returned 200 and the row disappeared from the panel with no console errors."
+    }},
+    { "id": "customer_permission_gap_bugfix", "type": "bugfix", "label": "Customer delete/create/update had zero permission gating", "properties": {
+        "date": "2026-08-05",
+        "foundDuring": "An audit of delete capabilities across every entity (Products, Categories, Suppliers, Customers, Expenses, Sales, Purchases, Notifications), triggered by an unrelated user question about whether shop owners could delete their own test data.",
+        "bug": "backend/src/routes/customerRoutes.js had ONLY protect() on every route - no requirePermission() call on create/update/delete at all, unlike every sibling entity (products/categories/suppliers/expenses all require a *_MANAGE permission for mutations). Any authenticated cashier could delete a customer record with no permission check whatsoever.",
+        "fix": "Added PERMISSIONS.CUSTOMER_MANAGE to backend/src/config/permissions.js, granted to the manager role by default (owner already has ALL_PERMISSIONS automatically). Gated customerRoutes.js's POST/PUT/DELETE with requirePermission(PERMISSIONS.CUSTOMER_MANAGE), matching the exact pattern supplierRoutes.js already used.",
+        "verified": "Live: logged in as the demo cashier account, attempted DELETE /api/customers/:id via the UI - got a real 403 Forbidden where it would previously have silently succeeded. Owner account still succeeds."
+    }},
+    { "id": "feature_pos_hardware_scanner_focus", "type": "feature", "label": "Hardware wedge scanner focus-management support", "properties": {
+        "date": "2026-08-05",
+        "userRequest": "User asked for the POS 'Scan' button to detect whether a hardware barcode scanner is connected and use it, showing a 'connect to Barcode Scanner' message if not - user shared a photo of their actual hardware (a handheld laser trigger-gun scanner and a Honeywell Orbit-style omnidirectional dome scanner).",
+        "technicalConstraint": "Both devices shown are standard USB/Bluetooth keyboard-emulation ('wedge') scanners in their default out-of-the-box mode - to the OS and browser they are INDISTINGUISHABLE from a keyboard. There is no web API that can detect 'is a keyboard-emulation device plugged in', since that's equivalent to asking 'is a keyboard plugged in', which no website can meaningfully answer. True connection detection only exists for a different, much rarer class of scanner exposing itself via WebHID/WebSerial with explicit per-device user permission - not what this user owns.",
+        "decisionMade": "Did NOT build a fake 'checking connection...' UI, since it would be non-functional/dishonest for this hardware. Built the real functional equivalent instead.",
+        "fix": "frontend/src/pages/dashboard/POS.jsx: search input (searchInputRef) now automatically regains focus via refocusSearch() after every action that could otherwise steal it - adding a product by clicking a card, closing the camera BarcodeScanner modal (both success and Cancel paths), and completing a checkout (clearCart()). Added a plain-language hint under the search bar explaining both paths. The existing handleBarcodeEnter (keydown-on-Enter) already handled the actual wedge-scanner input path from an earlier session - this fix is purely about making sure that input never loses focus mid-shift.",
+        "verified": "Live: clicked a product card, confirmed document.activeElement returned to the search input afterward; same confirmed after Scan->Cancel. Checkout-completion path verified by code inspection only (calls the same clearCart()->refocusSearch() already verified elsewhere) - did not run a real test sale against the live shop just to check this, to avoid creating real sale/inventory records."
+    }},
+    { "id": "feature_pin_login", "type": "feature", "label": "PIN quick-switch login", "properties": {
+        "note": "Predates the dated sections in this file - built in an earlier session not narrated in detail here. Documented now from direct code inspection so the graph doesn't have a gap.",
+        "files": "backend/src/controllers/authController.js (pinLogin, setPin, removePin), POST /api/auth/pin-login, PUT/DELETE /api/auth/pin",
+        "purpose": "Lets a shared shop PC remember which staff accounts have signed in before and offers a tap-a-tile + 4-6 digit PIN flow instead of retyping email+password every shift change - common for a counter shared between an owner and cashiers.",
+        "security": "PIN is bcrypt-hashed (separate column from the password hash). 5 failed attempts locks that account's PIN login for 15 minutes (pin_failed_attempts/pin_locked_until columns) - a full password login is always still available as a fallback, this only gates the PIN shortcut. A PIN is opt-in per-user (setPin requires the current password to set up), and can be removed (removePin)."
+    }},
+
+    { "id": "feature_expiry_alerts", "type": "feature", "label": "Expiry Date Alerts", "properties": {
+        "date": "2026-08-08",
+        "dbChange": "products.expiry_date (date, nullable) + products.expiry_alert_days (integer, CHECK >= 0 or NULL) added to backend/src/db/schema.sql and the live Supabase schema",
+        "files": "backend/src/controllers/productController.js (createProduct/updateProduct handle both fields; new getExpiryAlerts endpoint), backend/src/routes/productRoutes.js (GET /api/products/expiry-alerts, placed before /:id), frontend/src/components/ProductFormModal.jsx (Expiry Date + Expiry Alert-days-before fields, the days field disabled until a date is set), frontend/src/pages/dashboard/ExpiryAlerts.jsx + .css (new dashboard page), frontend/src/api/products.js (getExpiryAlerts)",
+        "triggerLogic": "Only surfaces a product once it's actually within its owner-configured window: expiry_date - CURRENT_DATE <= expiry_alert_days (including already-expired, i.e. negative days-left). A product with an expiry_date but no alert_days, or no expiry_date at all, never appears here - this isn't a generic 'list all expiring products' view.",
+        "ui": "Groups triggered alerts into '{N}-Day Alert' sections by threshold, sorted by urgency; red 'Expired N days ago' badge vs yellow 'N days left' badge.",
+        "nav": "New sidebar item + route (App.jsx, DashboardLayout.jsx NAV_ITEMS, i18n/en.json + ur.json).",
+        "verified": "Live: triggered, not-yet-triggered, and already-expired cases all tested and confirmed correct, test products cleaned up afterward."
+    }},
+    { "id": "feature_bulk_import", "type": "feature", "label": "Bulk Product CSV Import", "properties": {
+        "date": "2026-08-08",
+        "userRequest": "User asked 'suggest what to add to make everything easier for the owner?' - offered 5 ideas, user picked this one explicitly: 'bulk product import, go for it and keep everything disciplined.'",
+        "files": "backend/src/controllers/productController.js (bulkImportProducts, POST /api/products/bulk-import), backend/src/controllers/categoryController.js (clearShopCategoryCache exported so the import handler can invalidate it after auto-creating categories), backend/src/routes/productRoutes.js (route placed before /:id, same reason as expiry-alerts), frontend/src/api/products.js (bulkImportProducts), frontend/src/components/BulkImportModal.jsx + .css (new - downloadable CSV template, PapaParse client-side parsing, friendly-header-to-API-field HEADER_MAP, preview + post-import summary/error table), frontend/src/pages/dashboard/Inventory.jsx (+ 'Import Products' button next to '+ Add Product')",
+        "validation": "Each CSV row validated independently (name/sku required, cost/sellingPrice >= 0, unit must be one of VALID_UNITS, stockQuantity/lowStockThreshold default to 0/10 when blank, expiryDate must parse if present, expiryAlertDays must be a non-negative integer AND requires an expiryDate on the same row). BULK_IMPORT_MAX_ROWS = 500. Failed rows don't abort the batch - every row is attempted, results come back as {created, updated, failed} plus a {row, sku, message} array, row number = CSV line (array index + 2, accounting for the header row).",
+        "upsertSemantics": "INSERT ... ON CONFLICT (shop_id, sku) DO UPDATE ... RETURNING (xmax = 0) AS inserted - a single query both upserts and reports insert-vs-update per row, so re-importing the same file (e.g. to bulk-update prices/stock) is a supported, intentional use case, not just a one-time onboarding tool.",
+        "categoryHandling": "Category resolved/created by name via an in-request Map cache (categoryCache) + INSERT ... ON CONFLICT (shop_id, name) DO UPDATE ... RETURNING id - avoids creating duplicate categories when many rows in one file share a new category name. clearShopCategoryCache/clearShopProductCache called once at the end if anything changed.",
+        "verified": "Tested twice per explicit user follow-up ('test the bulk import on the browser'): first via direct API calls (mixed valid/invalid rows, re-import upsert, expiryAlertDays-without-date validation), then again with real browser clicks and a real file upload - confirmed actual DB changes (a real product's stock/category updated), then reverted the test product to its original state and deleted the newly-created test product. Full 48-test Jest suite passing both times this feature was touched."
+    }},
+    { "id": "pos_cart_polish_pass", "type": "bugfix", "label": "POS cart touch-target, alignment, scroll, and truncation fixes", "properties": {
+        "date": "2026-08-08",
+        "trigger": "A sequence of user-reported bugs via screenshots/messages, each initially looking cosmetic but tracing back to distinct root causes.",
+        "removeButtonBug": "'Remove doesn't work' turned out to be a working handler (removeFromCart) behind a 22x19px hit area - well under the ~44px touch-target guideline this phone-first POS needs. Enlarged .pos-remove-btn and .pos-qty-control button to 32x32px in frontend/src/pages/dashboard/POS.css.",
+        "alignmentBugFirst": "+/- glyphs looked vertically off next to a perfectly-centered x - .pos-qty-control button was missing the explicit display:flex;align-items:center;justify-content:center that .pos-remove-btn already had (plain text-centering in a button isn't reliable across different glyphs).",
+        "scrollToTopBug": "Clicking any product scrolled the whole page back to the top. Caused by an earlier-session feature (refocusSearch() for hardware wedge-scanner support) calling plain .focus() on the top-of-page search input after every addToCart() - browsers auto-scroll a newly-focused off-screen element into view by default. Fixed with searchInputRef.current?.focus({ preventScroll: true }) inside a requestAnimationFrame.",
+        "alignmentBugSecond": "A second, genuinely different misalignment: each .pos-cart-item row is its own independent CSS grid, so grid-template-columns: 1fr auto auto auto computed different column widths PER ROW based on that row's own price text (e.g. 'Rs 55' vs 'Rs 3600'), shifting qty/total/remove out of alignment across rows even though each button was internally centered correctly. Fixed by switching to fixed pixel columns (later trimmed to 1fr 92px 72px 32px) so every row shares identical column boundaries, like a real <table>.",
+        "truncationAndScrollbarBug": "Final screenshot showed 'Shan Birya...' cut off plus a stray icon next to the remove button. Only reproduced at 1000px width, where .pos-shell's 2-column desktop layout locks .pos-cart to a fixed 380px (confirmed via getComputedStyle - the name column was down to 99.2px). Fixed the name with a 2-line clamp (display:-webkit-box; -webkit-line-clamp:2) instead of single-line ellipsis, and trimmed the grid columns further to reclaim width. The 'stray icon' was the scrollbar's own arrow-button chrome (this browser/OS renders it) sitting directly on top of the remove-button column once the cart had enough items to scroll - fixed with padding-right: 0.5rem on .pos-cart-items.",
+        "verified": "Every fix confirmed live in-browser at the specific viewport/cart-size that reproduces it, not just visually - e.g. document.activeElement/window.scrollY checks for the scroll fix, getComputedStyle column-width checks for both alignment fixes, a real 3-item cart screenshot for the final truncation+scrollbar fix."
+    }},
+    { "id": "payment_method_dropdown_polish", "type": "polish", "label": "Payment Method: chip row -> dropdown", "properties": {
+        "date": "2026-08-08",
+        "userRequest": "'in payment method, by default select cash but when clicked on cash then other option of payment should appear in list.'",
+        "fix": "frontend/src/pages/dashboard/POS.jsx: replaced the always-visible PAYMENT_METHODS.map(...) row of chip buttons with a native <select value={paymentMethod}> (defaults to cash), matching the same pattern as the Customer <select> right above it. frontend/src/pages/dashboard/POS.css: removed the now-fully-unused .pos-payment-methods/.payment-chip rules (confirmed via grep no other file referenced them)."
+    }},
+    { "id": "sidebar_and_responsive_polish", "type": "polish", "label": "Sidebar color change + site-wide responsive audit", "properties": {
+        "date": "2026-08-08",
+        "sidebarColorChange": "frontend/src/layouts/DashboardLayout.css: .dash-sidebar background changed from #101828 (dark navy) to #4b5563 (grey) per user request; .dash-nav-link text/hover/active colors adjusted for contrast against the lighter background (active state kept the brand green #22c55e).",
+        "responsiveAudit": "User asked to check the whole app for responsiveness and fix any gaps found. Found one real bug: .dash-topbar (shop name + user link + logout button) had ZERO responsive handling - at <=768px the sidebar already collapsed to a 72px icon rail (pre-existing), but the topbar content itself just overflowed and silently clipped the logout button off-screen. Confirmed via topbarScrollWidth (402px) vs topbarClientWidth (303px) before the fix.",
+        "fix": "Added rules inside the existing @media (max-width: 768px) block: hide .dash-shop-name, tighten .dash-user gap, truncate .dash-user-link to 90px with ellipsis, tighten padding on .dash-topbar/.btn-logout/.dash-content. Added a new @media (max-width: 480px) block that hides .dash-user-link entirely (name+role no longer fits at all next to the bell/language-toggle/logout on a phone screen).",
+        "verified": "topbarScrollWidth === topbarClientWidth (no overflow) after the fix; RTL/Urdu layout re-checked and still correct."
+    }},
+    { "id": "deferred_target_and_suggestion_feature", "type": "deferred_feature", "label": "Monthly profit target + product/strategy suggestions (DEFERRED, not built)", "properties": {
+        "date": "2026-08-08",
+        "userRequest": "Owner enters a monthly profit goal; app compares against actual profit, looks at best/worst sellers, and suggests what to reorder/avoid plus a 'strategy to gain maximum profit'.",
+        "status": "Explicitly deferred by the user before any code was written. I explained the implementation plan and asked one clarifying design question (rule-based math suggestions vs. real AI-generated 'strategy' text) - the user did not answer the question and instead said 'leave it fo now', confirming the whole feature is on hold, not just that one sub-decision.",
+        "doNotResumeWithoutReRequest": "Nothing was scaffolded (no DB columns, no routes, no components). Do not start building this from a stale summary/memory alone - re-confirm scope and the rule-based-vs-AI question with the user first if they bring it back up."
     }}
   ],
 
@@ -193,9 +379,25 @@
     { "from": "feature_pdf", "to": "data_sale", "relation": "renders receipts for" },
 
     { "from": "backend", "to": "deploy_render", "relation": "target_deployment (SUPERSEDED)" },
-    { "from": "backend", "to": "deploy_vercel_backend", "relation": "target_deployment (ACTIVE PLAN, PENDING)" },
-    { "from": "frontend", "to": "deploy_vercel_frontend", "relation": "target_deployment (PENDING)" },
-    { "from": "deploy_vercel_backend", "to": "feature_whatsapp", "relation": "BREAKS - node-cron scheduler cannot run on serverless, see criticalCaveat" },
+    { "from": "backend", "to": "deploy_vercel_backend", "relation": "target_deployment (LIVE)" },
+    { "from": "frontend", "to": "deploy_vercel_frontend", "relation": "target_deployment (LIVE)" },
+    { "from": "deploy_vercel_backend", "to": "feature_whatsapp", "relation": "BREAKS - node-cron scheduler cannot run on serverless, see criticalCaveat (still unresolved)" },
+    { "from": "feature_whatsapp_wame", "to": "feature_whatsapp", "relation": "workaround_for (user-triggered link instead of automated cron report)" },
+    { "from": "feature_subscription_billing", "to": "feature_whatsapp_wame", "relation": "uses (payment-proof submission link)" },
+    { "from": "feature_subscription_billing", "to": "data_shop", "relation": "updates (subscription_plan, subscription_status, subscription_ends_at, last_payment_trx)" },
+    { "from": "perf_optimization_pass", "to": "feature_reports", "relation": "consolidated (dashboard-overview single endpoint)" },
+    { "from": "perf_optimization_pass", "to": "feature_pos", "relation": "sped_up (in-memory search)" },
+    { "from": "perf_optimization_pass", "to": "frontend", "relation": "adds (SkeletonLoader, React.memo, prefetching)" },
+
+    { "from": "platform_admin_middleware", "to": "admin_console", "relation": "gates" },
+    { "from": "admin_console", "to": "feature_subscription_billing", "relation": "replaces self-service activation for" },
+    { "from": "admin_console", "to": "data_shop", "relation": "manages cross-tenant (bypasses shop_id scoping by design)" },
+    { "from": "feature_branches", "to": "data_shop", "relation": "belongs_to (shop_id)" },
+    { "from": "feature_branches", "to": "data_product", "relation": "references in transfer manifests (does NOT split stock_quantity)" },
+    { "from": "feature_branches", "to": "feature_pos", "relation": "deliberately does NOT touch (stock-deduction transaction path left alone)" },
+    { "from": "feature_thermal_printing", "to": "data_sale", "relation": "renders receipts for (alternative to feature_pdf)" },
+    { "from": "payment_provider_scaffold", "to": "feature_subscription_billing", "relation": "wired_into (requestSubscriptionUpgrade)" },
+    { "from": "staff_permissions_bug_fix", "to": "permissions_module", "relation": "fixes frontend consumption of" },
 
     { "from": "secrets_location", "to": "db_access_layer", "relation": "configures (DATABASE_URL)" },
     { "from": "confirm_modal", "to": "data_category", "relation": "confirms delete for" },
@@ -203,7 +405,31 @@
     { "from": "confirm_modal", "to": "data_supplier", "relation": "confirms delete for" },
     { "from": "confirm_modal", "to": "data_customer", "relation": "confirms delete for" },
     { "from": "confirm_modal", "to": "data_expense", "relation": "confirms delete for" },
-    { "from": "confirm_modal", "to": "data_user", "relation": "confirms remove-staff for" }
+    { "from": "confirm_modal", "to": "data_user", "relation": "confirms remove-staff for" },
+
+    { "from": "whatsapp_phone_normalization_bugfix", "to": "feature_whatsapp", "relation": "fixes (Cloud API sendTextMessage)" },
+    { "from": "whatsapp_phone_normalization_bugfix", "to": "feature_whatsapp_wame", "relation": "fixes (buildWhatsAppUrl)" },
+    { "from": "whatsapp_phone_normalization_bugfix", "to": "feature_subscription_billing", "relation": "fixes (payment-proof wa.me link)" },
+    { "from": "feature_admin_payment_accounts", "to": "admin_console", "relation": "adds card to" },
+    { "from": "feature_admin_payment_accounts", "to": "feature_subscription_billing", "relation": "supplies payment details for" },
+    { "from": "settings_billing_redesign", "to": "feature_subscription_billing", "relation": "redesigns UI for" },
+    { "from": "notification_bell_unread_bugfix", "to": "data_notification", "relation": "fixes mark-as-read UX for" },
+    { "from": "feature_notification_delete", "to": "data_notification", "relation": "adds delete capability for" },
+    { "from": "customer_permission_gap_bugfix", "to": "permissions_module", "relation": "adds CUSTOMER_MANAGE to, closes gap in" },
+    { "from": "customer_permission_gap_bugfix", "to": "data_customer", "relation": "fixes unguarded delete/create/update for" },
+    { "from": "feature_pos_hardware_scanner_focus", "to": "feature_pos", "relation": "adds focus-management to" },
+    { "from": "feature_pos_hardware_scanner_focus", "to": "feature_barcode", "relation": "documents keyboard-wedge detection limitation for" },
+    { "from": "zxing_tryharder_bug", "to": "feature_barcode", "relation": "found_in, worked_around_in" },
+    { "from": "feature_pin_login", "to": "data_user", "relation": "authenticates via (alternative to password login)" },
+
+    { "from": "feature_expiry_alerts", "to": "data_product", "relation": "adds expiry_date/expiry_alert_days to, reads from" },
+    { "from": "feature_bulk_import", "to": "data_product", "relation": "bulk upserts (ON CONFLICT shop_id, sku)" },
+    { "from": "feature_bulk_import", "to": "data_category", "relation": "auto-creates by name (dedup via per-request cache)" },
+    { "from": "pos_cart_polish_pass", "to": "feature_pos", "relation": "fixes touch-target size, alignment, scroll, and truncation bugs in" },
+    { "from": "pos_cart_polish_pass", "to": "feature_pos_hardware_scanner_focus", "relation": "fixes a regression introduced by (scroll-to-top on refocusSearch)" },
+    { "from": "payment_method_dropdown_polish", "to": "feature_pos", "relation": "changes payment-method UI in" },
+    { "from": "sidebar_and_responsive_polish", "to": "frontend", "relation": "polishes (sidebar color, topbar responsive breakpoints)" },
+    { "from": "deferred_target_and_suggestion_feature", "to": "feature_reports", "relation": "would_have_extended (deferred, not built)" }
   ],
 
   "decisionLog": [
@@ -217,6 +443,22 @@
     { "date": "2026-07-27", "decision": "Vercel deployment is blocked on Render backend deployment", "why": "Vercel only hosts the frontend; deploying it alone gives a URL with no working API behind it. User must complete the Render dashboard steps manually since there's no Render API access." },
     { "date": "2026-07-28", "decision": "Ruled out the deploy_to_vercel MCP tool (direct file upload, no git) for this project; use Vercel's dashboard Git import instead", "why": "That tool requires every source file embedded literally in the tool call. The frontend is 62 files / ~200KB even after excluding package-lock.json; a test read of the assembled payload alone hit ~113K tokens and got truncated by the Read tool's cap, confirming this path is impractical for a project this size (the tool's own description says it's meant for a small app just generated, not an existing multi-file repo). Git import is also strictly better long-term: auto-deploys on every future push, same pattern as Render." },
     { "date": "2026-07-28", "decision": "User pivoted backend deployment target from Render to Vercel Serverless, made directly (commit e837f35, not through an agent in this session)", "why": "Not stated in the commit; likely to keep both frontend and backend on one platform. Consequence flagged, not yet resolved: node-cron's WhatsApp scheduler (feature_whatsapp) has no persistent process to run on under serverless and will not fire. The pg.Pool's max:10 sizing is also tuned for a long-running server, not serverless cold starts. Both are open items - see deploy_vercel_backend node." },
-    { "date": "2026-07-28", "decision": "User replaced native window.confirm() with a custom ConfirmModal component across all dashboard delete/remove actions (commit ce57f35)", "why": "window.confirm() is a jarring, unstyled native browser dialog that breaks the app's visual consistency; ConfirmModal matches the existing modal-overlay/modal-card pattern already used elsewhere (ProductFormModal, SimpleFormModal, StaffFormModal)." }
+    { "date": "2026-07-28", "decision": "User replaced native window.confirm() with a custom ConfirmModal component across all dashboard delete/remove actions (commit ce57f35)", "why": "window.confirm() is a jarring, unstyled native browser dialog that breaks the app's visual consistency; ConfirmModal matches the existing modal-overlay/modal-card pattern already used elsewhere (ProductFormModal, SimpleFormModal, StaffFormModal)." },
+    { "date": "2026-07-28", "decision": "Subscription billing built as a manual record-and-WhatsApp-ping flow, not a real payment gateway integration (commit 14629cf)", "why": "No JazzCash/EasyPaisa merchant API credentials/integration exist; local Pakistani retail SaaS commonly runs on manual bank-transfer + proof-of-payment. Flagged as a functional gap versus 'automated billing' - activateSubscription currently has no visible admin-only guard beyond the caller's own shopId, worth a security review before this is trusted as a real paywall." },
+    { "date": "2026-07-28", "decision": "Added wa.me deep-links for supplier orders/low-stock instead of fixing the node-cron/serverless conflict (commit 67db8e7)", "why": "Cheapest way to keep WhatsApp usable given Vercel serverless can't run node-cron; trades automation for a manual click. The underlying scheduler problem (feature_whatsapp criticalCaveat) is still open, not resolved by this." },
+    { "date": "2026-08-02", "decision": "Verified both Vercel deployments are actually live via direct HTTP checks, updated graph from 'not yet deployed' to confirmed-live", "why": "The graph had gone stale relative to the repo - PROJECT_PROGRESS.md and README already claimed live URLs but the machine-readable graph still said NOT YET DEPLOYED. Checked directly instead of trusting docs at face value." },
+    { "date": "2026-08-03", "decision": "User asked to fix the two flagged weak areas (WhatsApp automation, subscription billing security) and add anything that would genuinely increase the product's market demand. Fixed both, plus added branches/transfers, thermal printing, and a payment provider scaffold.", "why": "Explicit user request: 'improve these things and take it to higher level, if adding something will improve the demand of this webapp then add it, if something is weaker than improve it.'" },
+    { "date": "2026-08-03", "decision": "Used the Supabase MCP tools (list_tables, execute_sql, apply_migration) to inspect and migrate the LIVE database directly, rather than only editing schema.sql and assuming it matched.", "why": "This is exactly what surfaced that schema.sql had drifted from the live DB (subscription_status/ends_at/last_payment_trx existed live but not in the DDL source) and that requestSubscriptionUpgrade was actually broken in production (notifications_type_check didn't allow 'subscription'). Reading the live schema first, rather than trusting the DDL file's own claim to be the source of truth, is what caught both." },
+    { "date": "2026-08-03", "decision": "Scoped multi-branch as transfer-manifest tracking, not live per-branch inventory splitting", "why": "Splitting products.stock_quantity per branch would require rewriting the POS's SELECT...FOR UPDATE transactional stock-deduction path (saleController.js) - the single highest-risk, most load-bearing piece of the whole app. Chose the version that adds real value (a paper trail + workflow for multi-location shops, which is what the Enterprise tier's marketing copy already promises) without touching that code at all." },
+    { "date": "2026-08-03", "decision": "Built a payment-provider scaffold for JazzCash/EasyPaisa instead of a fake 'live' integration", "why": "No real merchant credentials exist for this project, and guessing at JazzCash/EasyPaisa's actual API request/response field names from memory risked shipping code that looks like it works but silently fails against their real endpoints. Built the correct integration shape (isConfigured()/createPaymentRequest()) with a clear 'not configured, falls back to manual' error instead, so it's honest about what state it's in." },
+    { "date": "2026-08-03", "decision": "Removed the self-service /api/shop/subscription/activate endpoint entirely rather than patching its permission check", "why": "Any check reachable via a shop owner's own JWT is fundamentally the wrong trust boundary for 'did this shop actually pay' - moved activation to a cross-tenant /api/admin/* surface gated by a separate secret (PLATFORM_ADMIN_KEY) the shop owner never has access to, rather than trying to find a permission flag that a compromised or dishonest owner couldn't also grant themselves." },
+    { "date": "2026-08-05", "decision": "Switched the camera barcode scanner from html5-qrcode to @zxing/browser + @zxing/library on explicit user request ('use Zxing')", "why": "User asked directly. Recommended @zxing/browser specifically over any other option because html5-qrcode was already using a bundled/vendored copy of zxing-js internally with no direct configuration access - @zxing/browser is the actively-maintained official port, giving real control over format hints and the video element lifecycle (a React ref instead of a DOM-id string), which is what ended up mattering for the StrictMode bug fix." },
+    { "date": "2026-08-05", "decision": "Removed DecodeHintType.TRY_HARDER from the barcode scanner instead of working around the upstream @zxing/browser bug some other way (e.g. patch-package)", "why": "The bug is in a third-party library's own uninitialized-field logic, not something reachable/fixable from application code without patching node_modules directly, which is fragile and would silently break again on any future dependency reinstall or version bump. Confirmed via npm view that 0.2.1/0.23.0 are the actual latest published releases, not a stale-install problem. Removing the hint trades away some real-world read robustness but ships a stable, non-crash-looping decode path today; documented clearly as an open item to revisit if upstream ever fixes it." },
+    { "date": "2026-08-05", "decision": "Proved the ZXing decode pipeline correct via a hand-built synthetic EAN-13 image instead of only testing against the live camera", "why": "The live camera test kept failing for reasons that turned out to be either environmental (webcam focus/lighting, only the user can fix) or code bugs already found and fixed (StrictMode race, tiny scan box) - but without an independent, deterministic way to test the DECODE LOGIC alone (no camera, no lighting variable), it would have been impossible to tell 'is the code still broken' apart from 'is this just a hard physical scanning condition.' Building a real, checksum-valid barcode bit pattern by hand (no 1D encoder is exported from @zxing/library) and decoding it through the exact same MultiFormatReader config gave a clean, reproducible pass/fail signal independent of any physical camera." },
+    { "date": "2026-08-05", "decision": "Did not build any 'is a barcode scanner connected' detection when the user asked for it, after confirming their hardware is a standard keyboard-emulation type", "why": "No web API can distinguish a keyboard-emulation HID device from an actual keyboard - building a fake detection UI would look like it works while never actually reflecting reality, which is worse than not having the feature at all. Explained the constraint plainly and built the real functional equivalent (never-losing-focus search input) instead of a dishonest approximation." },
+    { "date": "2026-08-05", "decision": "Fixed WhatsApp phone number normalization at the shared whatsappService.js layer (both sendTextMessage and buildWhatsAppUrl) rather than at each call site", "why": "The bug had already independently drifted into a SECOND, duplicated, unnormalized implementation in shopController.js before this fix - clear evidence that leaving normalization as each caller's responsibility doesn't hold up over time. Centralizing it in the one shared service function it should have been in from the start prevents a third drift." },
+    { "date": "2026-08-08", "decision": "Deferred the 'Target and Suggestion' monthly profit-goal feature after explaining the plan and asking a clarifying design question, per user instruction ('leave it fo now')", "why": "User asked to be told the implementation approach before building ('fist tell me how will you do it?'). After hearing the plan and a question about rule-based vs. AI-generated strategy text, the user chose to defer rather than decide - respected that as a stop, not a prompt to guess and proceed." },
+    { "date": "2026-08-08", "decision": "Built bulk product import as an upsert (insert-or-update by SKU) rather than insert-only", "why": "User asked for 'bulk product import' generically; an insert-only design would force a separate bulk-update tool later for the very common case of re-importing the same supplier price list with updated costs/stock. Upsert covers both onboarding and ongoing catalog maintenance with one feature." },
+    { "date": "2026-08-08", "decision": "Fixed .pos-cart-item's per-row auto-sized grid columns by switching to fixed pixel widths instead of trying to force consistent auto-sizing some other way (e.g. CSS Subgrid)", "why": "Each cart row renders as an independent DOM node/grid in this codebase's structure (no shared parent grid), so auto column widths are fundamentally computed per-row from that row's own content - fixed pixel widths are the simplest fix that guarantees identical column boundaries across rows regardless of price/name length, at the cost of the name column getting less space on a fixed 380px panel (addressed separately via 2-line text clamping)." }
   ]
 }

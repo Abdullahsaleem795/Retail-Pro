@@ -1,0 +1,82 @@
+.stat-card-v2-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.stat-card-v2 {
+  background: var(--color-bg-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  /* A fixed height (not min-height) - cards with a sparkline have more
+     content than plain-number cards, so a min-height alone still let the
+     two kinds size differently: same-row cards stretched to match each
+     other (Grid rows stretch their own items), but a row of sparkline
+     cards ended up visibly taller than a row of plain-number cards, since
+     each row was still sized off its own content. A fixed height makes
+     every card identical regardless of which row it lands in. */
+  height: 168px;
+}
+
+/* Soft pastel tint for the one "hero" metric per page - matches the
+   reference's accent card without needing a different gradient per card. */
+.stat-card-v2-gradient {
+  background: linear-gradient(135deg, #f0fdf4 0%, #eff6ff 100%);
+}
+
+.stat-card-v2-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.stat-card-v2-label {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-muted);
+  /* A label that wraps to 2 lines pushes this card's value down relative to
+     every sibling card whose (shorter) label stayed on one line, breaking
+     the row's alignment. min-width:0 is required for a flex child to be
+     allowed to shrink below its content width - without it, ellipsis never
+     kicks in and the label just overflows the flex row instead. */
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-card-v2-period {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--color-border);
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.stat-card-v2-value {
+  font-size: 1.7rem; /* same cap as the original .stat-value - anything
+    bigger wraps currency values like "Rs 189,470" mid-string in a narrow
+    card instead of shrinking to fit (fixed earlier for that exact bug). */
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-heading-md);
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stat-card-v2-spark {
+  margin-top: auto;
+  margin-left: -4px;
+  margin-right: -4px;
+}

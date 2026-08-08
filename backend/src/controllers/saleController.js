@@ -109,6 +109,44 @@ const getSales = asyncHandler(async (req, res) => {
   res.json(responsePayload);
 });
 
+// GET /api/sales/summary - the 4 stat cards at the top of the Sales page.
+// Deliberately a real aggregate query over ALL matching rows (not derived
+// from whatever page of `getSales` happens to be loaded in the browser) -
+// counting a 50-row client-side page would silently under-report on any
+// shop with more sales than that.
+const getSalesSummary = asyncHandler(async (req, res) => {
+  // Prefixed with shopId (not "summary:shopId") so clearShopSalesCache's
+  // `${shopId}:` prefix match also invalidates this on every new/refunded sale.
+  const cacheKey = `${req.shopId}:summary`;
+  const cached = salesCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return res.json(cached.response);
+  }
+
+  const { rows } = await query(
+    `SELECT
+       (SELECT COUNT(*) FROM sales WHERE shop_id = $1 AND created_at >= date_trunc('month', now())) AS total_this_month,
+       (SELECT COUNT(*) FROM sales WHERE shop_id = $1 AND created_at >= CURRENT_DATE) AS new_today,
+       (SELECT COUNT(*) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= date_trunc('month', now())) AS completed_this_month,
+       (SELECT COUNT(*) FROM sales WHERE shop_id = $1 AND status = 'refunded' AND created_at >= date_trunc('month', now())) AS refunded_this_month`,
+    [req.shopId]
+  );
+
+  const row = rows[0] || {};
+  const responsePayload = {
+    success: true,
+    data: {
+      totalThisMonth: Number(row.total_this_month || 0),
+      newToday: Number(row.new_today || 0),
+      completedThisMonth: Number(row.completed_this_month || 0),
+      refundedThisMonth: Number(row.refunded_this_month || 0),
+    },
+  };
+
+  salesCache.set(cacheKey, { timestamp: Date.now(), response: responsePayload });
+  res.json(responsePayload);
+});
+
 const getSale = asyncHandler(async (req, res) => {
   const sale = await fetchFullSale(req.params.id);
   if (!sale || sale.shopId !== req.shopId) {
@@ -310,4 +348,4 @@ const getSaleReceipt = asyncHandler(async (req, res) => {
   buildReceiptPDF(sale, mapRow(rows[0]), res);
 });
 
-module.exports = { getSales, getSale, createSale, refundSale, getSaleReceipt };
+module.exports = { getSales, getSalesSummary, getSale, createSale, refundSale, getSaleReceipt };

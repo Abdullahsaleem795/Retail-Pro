@@ -1,0 +1,15 @@
+.sales-stat-grid {
+  margin-bottom: var(--space-6);
+}
+
+.checkbox-col {
+  width: 40px;
+  text-align: center;
+}
+
+.checkbox-col input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-brand-strong);
+}

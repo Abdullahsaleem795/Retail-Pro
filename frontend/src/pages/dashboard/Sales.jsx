@@ -1,21 +1,29 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { listSales, refundSale, downloadReceipt } from '../../api/sales';
+import { listSales, getSalesSummary, refundSale, downloadReceipt } from '../../api/sales';
 import { useAuth } from '../../context/useAuth';
 import { formatCurrency, formatDateTime, formatPaymentMethod, capitalize } from '../../utils/format';
 import ThermalPrintButton from '../../components/ThermalPrintButton';
 import ConfirmModal from '../../components/ConfirmModal';
+import StatCard from '../../components/StatCard';
+import PaymentBadge from '../../components/PaymentBadge';
 import './Inventory.css';
+import './DashboardHome.css';
+import './Sales.css';
 
 export default function Sales() {
   const { user, shop } = useAuth();
   const [sales, setSales] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState(null);
   const [selected, setSelected] = useState(null);
   const [range, setRange] = useState({ from: '', to: '' });
   const [downloading, setDownloading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [refunding, setRefunding] = useState(null);
+  const [checkedIds, setCheckedIds] = useState(new Set());
 
   const canRefund = user?.role === 'owner' || user?.role === 'manager';
 
@@ -28,6 +36,9 @@ export default function Sales() {
         limit: 50,
       });
       setSales(res.data);
+      // A previous selection could point at rows no longer in view (new
+      // filter, refund removed a row from a status the owner cares about).
+      setCheckedIds(new Set());
     } catch {
       toast.error('Failed to load sales');
     } finally {
@@ -35,9 +46,22 @@ export default function Sales() {
     }
   }, [range.from, range.to]);
 
+  const fetchSummary = useCallback(async () => {
+    try {
+      const res = await getSalesSummary();
+      setSummary(res.data);
+    } catch {
+      // Stat cards just stay blank/zero - not worth blocking the page over.
+    }
+  }, []);
+
   useEffect(() => {
     fetchSales();
   }, [fetchSales]);
+
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
 
   const handleRefundConfirm = async () => {
     if (!refunding) return;
@@ -47,8 +71,63 @@ export default function Sales() {
       setSelected(null);
       setRefunding(null);
       fetchSales();
+      fetchSummary();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Refund failed');
+    }
+  };
+
+  const toggleChecked = (id) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCheckedAll = () => {
+    setCheckedIds((prev) => (prev.size === sales.length ? new Set() : new Set(sales.map((s) => s._id))));
+  };
+
+  // CSV of whatever's checked, or the whole currently-filtered list if
+  // nothing's checked - a real export of what's actually loaded, not a fake
+  // "coming soon" button.
+  const handleExport = () => {
+    setExporting(true);
+    try {
+      const rows = checkedIds.size > 0 ? sales.filter((s) => checkedIds.has(s._id)) : sales;
+      if (rows.length === 0) {
+        toast.error('No sales to export');
+        return;
+      }
+      const escapeCsv = (val) => `"${String(val ?? '').replace(/"/g, '""')}"`;
+      const header = ['Receipt', 'Date', 'Customer', 'Items', 'Payment Method', 'Total', 'Status'];
+      const lines = [header.map(escapeCsv).join(',')];
+      rows.forEach((s) => {
+        lines.push(
+          [
+            s.receiptNumber,
+            formatDateTime(s.createdAt),
+            s.customerId?.name || 'Walk-in',
+            s.items.length,
+            formatPaymentMethod(s.paymentMethod),
+            s.totalAmount,
+            capitalize(s.status),
+          ]
+            .map(escapeCsv)
+            .join(',')
+        );
+      });
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `sales-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -78,7 +157,24 @@ export default function Sales() {
 
   return (
     <div>
-      <h1 className="page-title">Sales History</h1>
+      <div className="page-header">
+        <h1 className="page-title" style={{ marginBottom: 0 }}>Sales History</h1>
+        <div className="page-header-actions">
+          <button className="btn-secondary btn-inline" onClick={handleExport} disabled={exporting || sales.length === 0}>
+            {exporting ? 'Exporting...' : `Export${checkedIds.size > 0 ? ` (${checkedIds.size})` : ''}`}
+          </button>
+          <Link to="/dashboard/pos" className="btn-primary btn-inline">
+            + New Sale
+          </Link>
+        </div>
+      </div>
+
+      <div className="stat-grid sales-stat-grid">
+        <StatCard label="Total Sales" value={summary?.totalThisMonth ?? '—'} period="This month" gradient />
+        <StatCard label="New Sales" value={summary?.newToday ?? '—'} period="Today" />
+        <StatCard label="Completed" value={summary?.completedThisMonth ?? '—'} period="This month" />
+        <StatCard label="Refunded" value={summary?.refundedThisMonth ?? '—'} period="This month" />
+      </div>
 
       <div className="filter-row">
         <div className="form-field">
@@ -100,6 +196,14 @@ export default function Sales() {
         <table className="data-table">
           <thead>
             <tr>
+              <th className="checkbox-col">
+                <input
+                  type="checkbox"
+                  checked={sales.length > 0 && checkedIds.size === sales.length}
+                  onChange={toggleCheckedAll}
+                  aria-label="Select all sales"
+                />
+              </th>
               <th>Receipt</th>
               <th>Date</th>
               <th>Customer</th>
@@ -112,17 +216,25 @@ export default function Sales() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="table-empty">Loading...</td></tr>
+              <tr><td colSpan={9} className="table-empty">Loading...</td></tr>
             ) : sales.length === 0 ? (
-              <tr><td colSpan={8} className="table-empty">No sales recorded yet.</td></tr>
+              <tr><td colSpan={9} className="table-empty">No sales recorded yet.</td></tr>
             ) : (
               sales.map((s) => (
                 <tr key={s._id}>
+                  <td className="checkbox-col">
+                    <input
+                      type="checkbox"
+                      checked={checkedIds.has(s._id)}
+                      onChange={() => toggleChecked(s._id)}
+                      aria-label={`Select sale ${s.receiptNumber}`}
+                    />
+                  </td>
                   <td>{s.receiptNumber}</td>
                   <td>{formatDateTime(s.createdAt)}</td>
                   <td className="truncate" title={s.customerId?.name}>{s.customerId?.name || 'Walk-in'}</td>
                   <td>{s.items.length}</td>
-                  <td>{formatPaymentMethod(s.paymentMethod)}</td>
+                  <td><PaymentBadge method={s.paymentMethod} /></td>
                   <td>{formatCurrency(s.totalAmount)}</td>
                   <td>{statusBadge(s.status)}</td>
                   <td className="table-actions">

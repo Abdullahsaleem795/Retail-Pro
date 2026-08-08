@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { listProducts, getProductByBarcode } from '../../api/products';
 import { listCustomers } from '../../api/customers';
-import { createSale } from '../../api/sales';
+import { createSale, downloadReceipt } from '../../api/sales';
 import {
   generateClientRef,
   queueSale,
@@ -11,7 +11,10 @@ import {
   flushQueue,
 } from '../../utils/offlineQueue';
 import { playBeep } from '../../utils/beep';
-import { formatPaymentMethod } from '../../utils/format';
+import { formatCurrency, formatDateTime, formatPaymentMethod } from '../../utils/format';
+import { useAuth } from '../../context/useAuth';
+import ThermalPrintButton from '../../components/ThermalPrintButton';
+import './Inventory.css';
 import './POS.css';
 
 // The scanner pulls in a camera/decoding library; keep it out of the POS
@@ -21,6 +24,7 @@ const BarcodeScanner = lazy(() => import('../../components/BarcodeScanner'));
 const PAYMENT_METHODS = ['cash', 'card', 'credit', 'jazzcash', 'easypaisa'];
 
 export default function POS() {
+  const { shop } = useAuth();
   const searchInputRef = useRef(null);
   // Hardware "wedge" scanners (the trigger-gun and dome types) aren't a
   // detectable connection - to the OS they're indistinguishable from a
@@ -44,12 +48,20 @@ export default function POS() {
   const [customers, setCustomers] = useState([]);
   const [customerId, setCustomerId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [discount, setDiscount] = useState('0');
+  // Owner enters a percentage, not a Rs figure - discountValue (the actual Rs
+  // amount, what the backend/receipt actually need) is derived from it below.
+  const [discountPercent, setDiscountPercent] = useState('0');
   const [checkingOut, setCheckingOut] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncing, setSyncing] = useState(false);
+  // The receipt of the sale that was just completed - drives the post-checkout
+  // print/download modal. Built from the server's response when online, or
+  // from the local cart when the sale had to be queued offline (a shopkeeper
+  // still needs to hand over a paper receipt even with no internet).
+  const [receipt, setReceipt] = useState(null);
+  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     try {
@@ -226,7 +238,16 @@ export default function POS() {
   const removeFromCart = (productId) => setCart((prev) => prev.filter((item) => item.productId !== productId));
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0), [cart]);
-  const discountValue = useMemo(() => Math.min(Math.max(Number(discount) || 0, 0), subtotal), [discount, subtotal]);
+  // Clamp the percent itself to 0-100 first (not the Rs result) - that's what
+  // stops the input from reading something nonsensical like "150%" as you type.
+  const discountPercentValue = useMemo(
+    () => Math.min(Math.max(Number(discountPercent) || 0, 0), 100),
+    [discountPercent]
+  );
+  const discountValue = useMemo(
+    () => Math.round((subtotal * discountPercentValue) / 100),
+    [subtotal, discountPercentValue]
+  );
   const total = Math.max(subtotal - discountValue, 0);
 
   const handleCheckout = async () => {
@@ -249,16 +270,38 @@ export default function POS() {
       amountPaid: total,
     };
 
+    // Cart/customer are cleared right after checkout, so snapshot what the
+    // receipt needs to show BEFORE that happens - subtotal/discountValue/total
+    // are plain consts from this render and stay correct even after setCart.
+    const customerSnapshot = customers.find((c) => c._id === customerId) || null;
+    const buildLocalReceipt = (receiptNumber) => ({
+      receiptNumber,
+      createdAt: new Date().toISOString(),
+      items: cart.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        subtotal: item.unitPrice * item.quantity,
+      })),
+      subtotal,
+      discount: discountValue,
+      tax: 0,
+      totalAmount: total,
+      paymentMethod,
+      customerId: customerSnapshot,
+    });
+
     const clearCart = () => {
       setCart([]);
-      setDiscount('0');
+      setDiscountPercent('0');
       setCustomerId('');
       refocusSearch();
     };
 
     try {
-      await createSale({ ...payload, clientRef });
+      const res = await createSale({ ...payload, clientRef });
       toast.success('Sale completed');
+      setReceipt(res.data);
       clearCart();
       fetchProducts();
     } catch (err) {
@@ -276,6 +319,9 @@ export default function POS() {
           });
           setPendingCount((c) => c + 1);
           toast.success(`Saved offline — will sync when back online (Rs ${total})`, { icon: '📥' });
+          // No server id yet (it hasn't synced), so the receipt shows the
+          // client-generated reference instead of a real receipt number.
+          setReceipt(buildLocalReceipt(`OFFLINE-${clientRef.slice(0, 8).toUpperCase()}`));
           clearCart();
         } catch {
           toast.error('Offline and could not save the sale locally. Please write it down.');
@@ -286,6 +332,32 @@ export default function POS() {
     } finally {
       setCheckingOut(false);
     }
+  };
+
+  // Same pattern as Sales.jsx - the receipt endpoint is JWT-protected, so a
+  // plain <a href> would 401. Only available once the sale has a real server
+  // id (not for an offline sale that hasn't synced yet).
+  const handleDownloadPdf = async () => {
+    if (!receipt?._id) return;
+    setDownloadingReceipt(true);
+    try {
+      const blob = await downloadReceipt(receipt._id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${receipt.receiptNumber}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to generate receipt PDF');
+    } finally {
+      setDownloadingReceipt(false);
+    }
+  };
+
+  const closeReceipt = () => {
+    setReceipt(null);
+    refocusSearch();
   };
 
   return (
@@ -406,14 +478,24 @@ export default function POS() {
               </select>
             </div>
             <div className="form-field">
-              <label>Discount (Rs)</label>
-              <input type="number" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+              <label>Discount (%)</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={discountPercent}
+                onChange={(e) => setDiscountPercent(e.target.value)}
+              />
             </div>
           </div>
 
           <div className="pos-totals">
             <div><span>Subtotal</span><span>Rs {subtotal}</span></div>
-            <div><span>Discount</span><span>- Rs {discountValue}</span></div>
+            <div>
+              <span>Discount{discountPercentValue > 0 ? ` (${discountPercentValue}%)` : ''}</span>
+              <span>- Rs {discountValue}</span>
+            </div>
             <div className="pos-total-grand"><span>Total</span><span>Rs {total}</span></div>
           </div>
 
@@ -433,6 +515,89 @@ export default function POS() {
             }}
           />
         </Suspense>
+      )}
+
+      {receipt && (
+        <div className="modal-overlay" onClick={closeReceipt}>
+          <motion.div
+            className="modal-card pos-receipt-modal"
+            onClick={(e) => e.stopPropagation()}
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.15 }}
+          >
+            <div className="modal-title">Sale Complete</div>
+
+            {/* Only this block is visible when Print Receipt triggers
+                window.print() - see the @media print rules in POS.css. */}
+            <div className="pos-receipt-print">
+              <div className="pos-receipt-shop">
+                <div className="pos-receipt-shop-name">{shop?.name || 'RetailPro'}</div>
+                {shop?.address && <div className="pos-receipt-shop-line">{shop.address}</div>}
+                {shop?.phone && <div className="pos-receipt-shop-line">{shop.phone}</div>}
+              </div>
+
+              <div className="pos-receipt-divider" />
+
+              <div className="pos-receipt-meta">
+                <div><span>Receipt</span><span>{receipt.receiptNumber}</span></div>
+                <div><span>Date</span><span>{formatDateTime(receipt.createdAt)}</span></div>
+                <div><span>Customer</span><span>{receipt.customerId?.name || 'Walk-in'}</span></div>
+                <div><span>Payment</span><span>{formatPaymentMethod(receipt.paymentMethod)}</span></div>
+              </div>
+
+              <div className="pos-receipt-divider" />
+
+              <div className="pos-receipt-items">
+                {receipt.items.map((item, idx) => (
+                  <div className="pos-receipt-item" key={idx}>
+                    <div className="pos-receipt-item-name">{item.name}</div>
+                    <div className="pos-receipt-item-line">
+                      <span>{item.quantity} &times; {formatCurrency(item.unitPrice)}</span>
+                      <span>{formatCurrency(item.subtotal)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="pos-receipt-divider" />
+
+              <div className="pos-receipt-totals">
+                <div><span>Subtotal</span><span>{formatCurrency(receipt.subtotal)}</span></div>
+                {Number(receipt.discount) > 0 && (
+                  <div><span>Discount</span><span>- {formatCurrency(receipt.discount)}</span></div>
+                )}
+                {Number(receipt.tax) > 0 && (
+                  <div><span>Tax</span><span>{formatCurrency(receipt.tax)}</span></div>
+                )}
+                <div className="pos-receipt-grand"><span>Total</span><span>{formatCurrency(receipt.totalAmount)}</span></div>
+              </div>
+
+              <div className="pos-receipt-footer">Thank you for shopping with us!</div>
+            </div>
+
+            {!receipt._id && (
+              <p className="pos-receipt-offline-note">
+                Saved offline - this sale gets a permanent receipt number once it syncs. Print and
+                Bluetooth printing work right now; PDF download will be available after it syncs.
+              </p>
+            )}
+
+            <div className="modal-actions" style={{ flexWrap: 'wrap' }}>
+              <button className="btn-secondary" onClick={closeReceipt}>New Sale</button>
+              <button className="btn-primary" onClick={() => window.print()}>Print Receipt</button>
+              <ThermalPrintButton sale={receipt} shop={shop} />
+              <button
+                className="btn-secondary"
+                onClick={handleDownloadPdf}
+                disabled={!receipt._id || downloadingReceipt}
+                title={!receipt._id ? 'Available once this offline sale has synced' : ''}
+              >
+                {downloadingReceipt ? 'Preparing...' : 'Download PDF'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
     </div>
   );

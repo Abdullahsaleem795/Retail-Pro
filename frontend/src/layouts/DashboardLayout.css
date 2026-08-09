@@ -6,29 +6,73 @@
 
 .dash-sidebar {
   width: 230px;
+  /* Kept grey per explicit user instruction - do not change this back to
+     the reference screenshot's dark navy sidebar. */
   background: #4b5563;
   color: #fff;
   display: flex;
   flex-direction: column;
   padding: 1.5rem 0;
   flex-shrink: 0;
+  transition: width var(--transition-fast);
 }
 
 .dash-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+.dash-brand-icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--color-brand);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dash-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dash-brand-name {
   font-size: var(--fs-h5);
   font-weight: var(--fw-bold);
   letter-spacing: var(--ls-heading-md);
-  padding: 0 var(--space-6) var(--space-6);
-  color: var(--color-brand);
+  color: #fff;
+  white-space: nowrap;
+  /* Shop names aren't length-limited like the old static "Retail Pro" text
+     was - ellipsis instead of a hard clip so a long name still reads as
+     intentional, with the full name available via the title tooltip. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-brand-sub {
+  font-size: 0.68rem;
+  color: #cbd5e1;
+  white-space: nowrap;
 }
 
 .dash-sidebar nav {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+  flex: 1;
 }
 
 .dash-nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-3) var(--space-6);
   color: #e5e7eb;
   text-decoration: none;
@@ -36,6 +80,17 @@
   font-weight: var(--fw-medium);
   transition: background var(--transition-fast), color var(--transition-fast);
   border-left: 3px solid transparent;
+}
+
+.dash-nav-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.dash-nav-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dash-nav-link:hover {
@@ -47,6 +102,10 @@
   background: #374151;
   color: #22c55e;
   border-left-color: #22c55e;
+}
+
+.dash-nav-link.active .dash-nav-icon {
+  opacity: 1;
 }
 
 /* Urdu renders right-to-left, so the sidebar's active indicator has to move to
@@ -73,14 +132,118 @@
   border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-4);
   padding: 0 var(--space-6);
 }
 
-.dash-shop-name {
+.topbar-hamburger {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.topbar-hamburger:hover {
+  background: var(--color-bg-subtle);
+}
+
+/* ---------- Topbar search ---------- */
+
+.topbar-search {
+  position: relative;
+  flex: 1;
+  max-width: 420px;
+}
+
+.topbar-search-icon {
+  position: absolute;
+  left: var(--space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-placeholder);
+  pointer-events: none;
+}
+
+.topbar-search input {
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--space-3) 0 2.25rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-subtle);
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-primary);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.topbar-search input:focus {
+  outline: none;
+  border-color: var(--color-border-focus);
+  background: var(--color-bg-surface);
+  box-shadow: var(--focus-ring);
+}
+
+.topbar-search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  min-width: 320px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 60;
+  overflow: hidden;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.topbar-search-empty {
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: var(--fs-body-sm);
+  text-align: center;
+}
+
+.topbar-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  text-decoration: none;
+  border-bottom: 1px solid var(--color-bg-subtle);
+  transition: background var(--transition-fast);
+}
+
+.topbar-search-result:last-child {
+  border-bottom: none;
+}
+
+.topbar-search-result:hover {
+  background: var(--color-bg-subtle);
+}
+
+.topbar-search-result-name {
+  font-size: var(--fs-body-sm);
   font-weight: var(--fw-semibold);
   color: var(--color-text-primary);
 }
+
+.topbar-search-result-meta {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Topbar right side ---------- */
 
 .dash-user {
   display: flex;
@@ -88,36 +251,135 @@
   gap: var(--space-4);
   font-size: var(--fs-body-sm);
   color: var(--color-text-secondary);
+  flex-shrink: 0;
 }
 
-.dash-user-link {
+.dash-shop-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.4rem 0.8rem;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.dash-shop-badge-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-brand);
+  color: #fff;
+}
+
+/* ---------- User menu ---------- */
+
+.user-menu {
+  position: relative;
+}
+
+.user-menu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: var(--space-1);
+  border-radius: var(--radius-pill);
   color: var(--color-text-secondary);
-  text-decoration: none;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-sm);
   transition: background var(--transition-fast);
 }
 
-.dash-user-link:hover {
+.user-menu-trigger:hover {
   background: var(--color-bg-subtle);
+}
+
+.user-menu-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-brand);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: var(--fw-bold);
+  flex-shrink: 0;
+}
+
+.user-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 60;
+  padding: var(--space-2);
+}
+
+[dir='rtl'] .user-menu-dropdown {
+  right: auto;
+  left: 0;
+}
+
+.user-menu-info {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--color-bg-subtle);
+  margin-bottom: var(--space-2);
+}
+
+.user-menu-name {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
   color: var(--color-text-primary);
 }
 
-.btn-logout {
-  background: var(--color-danger);
-  color: var(--color-brand-contrast);
+.user-menu-role {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  background: none;
   border: none;
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-family: var(--font-family);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
   font-size: var(--fs-body-sm);
-  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+  text-align: left;
   transition: background var(--transition-fast);
 }
 
-.btn-logout:hover {
-  background: #b91c1c;
+.user-menu-item:hover {
+  background: var(--color-bg-subtle);
+}
+
+.user-menu-item-danger {
+  color: var(--color-danger);
+}
+
+.user-menu-item-danger:hover {
+  background: var(--color-danger-bg);
 }
 
 .dash-content {
@@ -126,52 +388,67 @@
   overflow-y: auto;
 }
 
+/* ---------- Manual collapse (hamburger toggle) ---------- */
+
+.dash-shell-collapsed .dash-sidebar {
+  width: 72px;
+}
+
+.dash-shell-collapsed .dash-brand {
+  padding: 0 0 var(--space-6);
+  justify-content: center;
+}
+
+.dash-shell-collapsed .dash-brand-text {
+  display: none;
+}
+
+.dash-shell-collapsed .dash-nav-link {
+  justify-content: center;
+  padding: var(--space-3);
+}
+
+.dash-shell-collapsed .dash-nav-label {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .dash-sidebar {
     width: 72px;
   }
   .dash-brand {
-    font-size: 0;
+    padding: 0 0 var(--space-6);
+    justify-content: center;
+  }
+  .dash-brand-text {
+    display: none;
   }
   .dash-nav-link {
-    padding: var(--space-3) var(--space-2);
-    text-align: center;
-    font-size: 0.7rem;
+    justify-content: center;
+    padding: var(--space-3);
+  }
+  .dash-nav-label {
+    display: none;
   }
 
-  /* The topbar was never built to shrink - .dash-shop-name plus a full
-     "Name (role)" link plus the logout button simply don't fit once the
-     sidebar eats 72px on a phone-width screen, so it silently overflowed
-     and clipped the logout button off-screen. Drop the shop name (already
-     redundant with the page itself) and tighten spacing first. */
+  /* The topbar was never built to shrink - search bar, shop badge, and user
+     menu don't all fit once the sidebar eats 72px on a phone-width screen.
+     Hide the search bar and shop badge, keep the essentials (bell, language,
+     user menu) usable. */
   .dash-topbar {
     padding: 0 var(--space-4);
+    gap: var(--space-2);
   }
-  .dash-shop-name {
+  .topbar-search {
+    display: none;
+  }
+  .dash-shop-badge {
     display: none;
   }
   .dash-user {
     gap: var(--space-2);
   }
-  .dash-user-link {
-    max-width: 90px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .btn-logout {
-    padding: var(--space-2) var(--space-3);
-  }
   .dash-content {
     padding: var(--space-4);
-  }
-}
-
-@media (max-width: 480px) {
-  /* Below this, even the truncated name+role link is more than a phone
-     screen can spare next to the bell, language toggle, and logout button -
-     drop it entirely rather than let any of those get squeezed further. */
-  .dash-user-link {
-    display: none;
   }
 }

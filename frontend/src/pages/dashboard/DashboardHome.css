@@ -12,27 +12,6 @@
   gap: var(--space-4);
 }
 
-/* The Dashboard always renders exactly 6 stat cards - auto-fit's column
-   count depends on container width, and at some widths that put 5 cards on
-   row 1 and left the 6th stranded alone on row 2 with a wide empty gap next
-   to it. A fixed, even column count per breakpoint (3/2/1 - all divisors of
-   6) means every row is always full, so the grid never looks lopsided. */
-.dashboard-stat-grid {
-  grid-template-columns: repeat(3, 1fr);
-}
-
-@media (max-width: 900px) {
-  .dashboard-stat-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-@media (max-width: 560px) {
-  .dashboard-stat-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
 .stat-card {
   background: var(--color-bg-surface);
   border-radius: var(--radius-md);
@@ -74,17 +53,6 @@
   display: block;
 }
 
-.chart-grid {
-  display: grid;
-  /* Same min(340px, 100%) fix as .stat-grid above - this was the actual bug
-     the user hit: a bare 340px minimum meant the chart card refused to
-     shrink below 340px even inside a ~250px-wide mobile content area,
-     producing a horizontal scrollbar to see the rest of the chart. */
-  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
-  gap: var(--space-4);
-  margin-top: var(--space-5);
-}
-
 .chart-card {
   background: var(--color-bg-surface);
   border-radius: var(--radius-md);
@@ -96,5 +64,320 @@
   font-size: var(--fs-h6);
   font-weight: var(--fw-semibold);
   color: var(--color-text-primary);
-  margin: 0 0 var(--space-4);
+  margin: 0;
+}
+
+/* ---------- Welcome banner ---------- */
+
+.dash-welcome-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-5);
+}
+
+.dash-welcome-title {
+  margin-bottom: var(--space-1);
+}
+
+.dash-welcome-sub {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--fs-body-sm);
+}
+
+.dash-date-range {
+  padding: 0.55rem 1rem;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* ---------- 5-card trend stat row ---------- */
+
+.trend-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+@media (max-width: 1400px) {
+  .trend-stat-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .trend-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .trend-stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Main 2-column layout ---------- */
+
+.dash-main-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .dash-main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dash-main-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.dash-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.dash-panel-header .chart-title {
+  margin: 0;
+}
+
+.dash-panel-tag {
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-muted);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.dash-panel-link {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-link);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.dash-panel-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Sales Overview metric strip ---------- */
+
+.dash-metric-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-bg-subtle);
+}
+
+@media (max-width: 560px) {
+  .dash-metric-strip {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.dash-metric-strip > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dash-metric-label {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+}
+
+.dash-metric-value {
+  font-size: 1.05rem;
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Recent Orders (dashboard preview table) ---------- */
+
+.dash-recent-orders-wrap {
+  box-shadow: none;
+  border: 1px solid var(--color-bg-subtle);
+}
+
+.dash-recent-order-row {
+  cursor: pointer;
+}
+
+.dash-recent-order-row:hover {
+  background: var(--color-bg-subtle);
+}
+
+/* ---------- Top Selling Products ---------- */
+
+.dash-top-products {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.dash-top-product-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.dash-top-product-rank {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  font-size: var(--fs-small);
+  font-weight: var(--fw-bold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dash-top-product-icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dash-top-product-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.dash-top-product-name {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dash-top-product-sku {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+}
+
+.dash-top-product-stats {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.dash-top-product-revenue {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.dash-top-product-sold {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ---------- Stock Summary donut ---------- */
+
+.dash-stock-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.dash-donut-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.dash-donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.dash-donut-total {
+  font-size: 1.5rem;
+  font-weight: var(--fw-bold);
+  color: var(--color-text-primary);
+}
+
+.dash-donut-total-label {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+}
+
+.dash-stock-legend {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.dash-stock-legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-body-sm);
+}
+
+.dash-stock-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dash-stock-legend-name {
+  color: var(--color-text-secondary);
+  flex: 1;
+}
+
+.dash-stock-legend-value {
+  color: var(--color-text-primary);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
 }

@@ -65,6 +65,8 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
   const todayStart = startOfDay();
   const trendDaysAgo = daysAgo(14);
   const bestDaysAgo = daysAgo(30);
+  const weekAgo = daysAgo(7);
+  const twoWeeksAgo = daysAgo(14);
 
   const summaryResult = await query(
     `SELECT
@@ -73,8 +75,35 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
        (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true) AS products_in_stock,
        (SELECT COALESCE(SUM(stock_quantity * cost_price),0) FROM products WHERE shop_id = $1 AND is_active = true) AS stock_value,
        (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true AND stock_quantity <= low_stock_threshold) AS low_stock_items,
-       (SELECT COUNT(*) FROM purchases WHERE shop_id = $1 AND status = 'pending') AS pending_purchases`,
+       (SELECT COUNT(*) FROM purchases WHERE shop_id = $1 AND status = 'pending') AS pending_purchases,
+       (SELECT COUNT(*) FROM customers WHERE shop_id = $1) AS total_customers,
+       (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true AND stock_quantity = 0) AS out_of_stock,
+       (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true AND stock_quantity > 0 AND stock_quantity <= low_stock_threshold) AS low_stock_only,
+       (SELECT COUNT(*) FROM products WHERE shop_id = $1 AND is_active = true AND stock_quantity > low_stock_threshold) AS healthy_stock`,
     [req.shopId, todayStart]
+  );
+
+  // "This week" = rolling last 7 days, "last week" = the 7 days before that -
+  // simpler and more useful for a shop open every day than calendar-week
+  // (Mon-Sun) boundaries, and matches what "vs last week" should mean day-to-day.
+  const weekResult = await query(
+    `SELECT
+       (SELECT COALESCE(SUM(total_amount),0) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2) AS this_week_sales,
+       (SELECT COUNT(*) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $2) AS this_week_orders,
+       (SELECT COALESCE(SUM(si.subtotal - si.cost_price * si.quantity),0)
+          FROM sales s JOIN sale_items si ON si.sale_id = s.id
+          WHERE s.shop_id = $1 AND s.status = 'completed' AND s.created_at >= $2) AS this_week_profit,
+       (SELECT COALESCE(SUM(si.quantity),0)
+          FROM sales s JOIN sale_items si ON si.sale_id = s.id
+          WHERE s.shop_id = $1 AND s.status = 'completed' AND s.created_at >= $2) AS this_week_items,
+       (SELECT COALESCE(SUM(total_amount),0) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $3 AND created_at < $2) AS last_week_sales,
+       (SELECT COUNT(*) FROM sales WHERE shop_id = $1 AND status = 'completed' AND created_at >= $3 AND created_at < $2) AS last_week_orders,
+       (SELECT COALESCE(SUM(si.subtotal - si.cost_price * si.quantity),0)
+          FROM sales s JOIN sale_items si ON si.sale_id = s.id
+          WHERE s.shop_id = $1 AND s.status = 'completed' AND s.created_at >= $3 AND s.created_at < $2) AS last_week_profit,
+       (SELECT COUNT(*) FROM customers WHERE shop_id = $1 AND created_at >= $3 AND created_at < $2) AS last_week_new_customers,
+       (SELECT COUNT(*) FROM customers WHERE shop_id = $1 AND created_at >= $2) AS this_week_new_customers`,
+    [req.shopId, weekAgo, twoWeeksAgo]
   );
 
   const trendResult = await query(
@@ -87,9 +116,10 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
   );
 
   const bestResult = await query(
-    `SELECT si.product_id AS id, MIN(si.name) AS name,
+    `SELECT si.product_id AS id, MIN(si.name) AS name, MIN(p.sku) AS sku,
             SUM(si.quantity) AS quantity_sold, SUM(si.subtotal) AS revenue
      FROM sales s JOIN sale_items si ON si.sale_id = s.id
+     LEFT JOIN products p ON p.id = si.product_id
      WHERE s.shop_id = $1 AND s.status = 'completed' AND s.created_at >= $2
      GROUP BY si.product_id
      ORDER BY quantity_sold DESC
@@ -97,7 +127,18 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
     [req.shopId, bestDaysAgo]
   );
 
+  const recentSalesResult = await query(
+    `SELECT s.id, s.receipt_number, s.total_amount, s.status, s.created_at,
+       CASE WHEN c.id IS NOT NULL THEN jsonb_build_object('_id', c.id, 'name', c.name) ELSE NULL END AS customer_id
+     FROM sales s LEFT JOIN customers c ON c.id = s.customer_id
+     WHERE s.shop_id = $1
+     ORDER BY s.created_at DESC
+     LIMIT 5`,
+    [req.shopId]
+  );
+
   const row = summaryResult.rows[0] || {};
+  const wk = weekResult.rows[0] || {};
   const responsePayload = {
     success: true,
     data: {
@@ -108,9 +149,38 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
         stockValue: Number(row.stock_value || 0),
         lowStockItems: Number(row.low_stock_items || 0),
         pendingPurchases: Number(row.pending_purchases || 0),
+        totalCustomers: Number(row.total_customers || 0),
+      },
+      stockBreakdown: {
+        inStock: Number(row.healthy_stock || 0),
+        lowStock: Number(row.low_stock_only || 0),
+        outOfStock: Number(row.out_of_stock || 0),
+      },
+      weekComparison: {
+        thisWeek: {
+          sales: Number(wk.this_week_sales || 0),
+          orders: Number(wk.this_week_orders || 0),
+          profit: Number(wk.this_week_profit || 0),
+          itemsSold: Number(wk.this_week_items || 0),
+          newCustomers: Number(wk.this_week_new_customers || 0),
+        },
+        lastWeek: {
+          sales: Number(wk.last_week_sales || 0),
+          orders: Number(wk.last_week_orders || 0),
+          profit: Number(wk.last_week_profit || 0),
+          newCustomers: Number(wk.last_week_new_customers || 0),
+        },
       },
       trend: mapRows(trendResult.rows).map((r) => ({ _id: r._id, total: Number(r.total), transactions: Number(r.transactions) })),
-      bestSellers: mapRows(bestResult.rows).map((r) => ({ _id: r._id, name: r.name, quantitySold: Number(r.quantitySold), revenue: Number(r.revenue) })),
+      bestSellers: mapRows(bestResult.rows).map((r) => ({ _id: r._id, name: r.name, sku: r.sku, quantitySold: Number(r.quantitySold), revenue: Number(r.revenue) })),
+      recentSales: mapRows(recentSalesResult.rows).map((r) => ({
+        _id: r._id,
+        receiptNumber: r.receiptNumber,
+        totalAmount: Number(r.totalAmount),
+        status: r.status,
+        createdAt: r.createdAt,
+        customerId: r.customerId,
+      })),
     },
   };
 

@@ -18,8 +18,14 @@
      other (Grid rows stretch their own items), but a row of sparkline
      cards ended up visibly taller than a row of plain-number cards, since
      each row was still sized off its own content. A fixed height makes
-     every card identical regardless of which row it lands in. */
-  height: 168px;
+     every card identical regardless of which row it lands in.
+     184px, not 168px: measured the actual content stack (padding + label
+     row + value line-height + sparkline + gaps) at ~178px - 168px was a
+     few px too tight, and flexbox's default flex-shrink:1 silently
+     compressed the value span BELOW its own line-height to make it fit,
+     which clipped the top/bottom of the digits via overflow:hidden. Sized
+     with headroom this time instead of guessing again. */
+  height: 184px;
 }
 
 /* Soft pastel tint for the one "hero" metric per page - matches the
@@ -73,6 +79,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* Never let flexbox shrink this below its own line-height to make the
+     fixed-height card fit - that's what silently clipped the top/bottom
+     off "Rs 0"/"0" before. If content ever overflows the card again, the
+     sparkline (flexible, and cosmetic rather than data) should be what
+     gives, never the number itself. */
+  flex-shrink: 0;
 }
 
 .stat-card-v2-spark {

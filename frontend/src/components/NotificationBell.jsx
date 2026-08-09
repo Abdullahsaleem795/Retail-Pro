@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { FiBell } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import {
   listNotifications,
@@ -105,7 +106,7 @@ export default function NotificationBell() {
   return (
     <div className="notif-wrap" ref={containerRef}>
       <button className="notif-bell" onClick={handleToggle} aria-label="Notifications">
-        <span aria-hidden="true">🔔</span>
+        <FiBell size={18} aria-hidden="true" />
         {unreadCount > 0 && <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
       </button>
 

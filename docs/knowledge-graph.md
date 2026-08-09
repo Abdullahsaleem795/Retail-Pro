@@ -5,21 +5,21 @@ project context from conversation history.** Update both whenever something chan
 deployment status flip, a bug fix, a new module. Don't let this go stale; a wrong graph is worse than
 no graph.
 
-_Last updated: 2026-08-09 — feature + redesign pass on top of the 2026-08-08 pass. Added a POS
-post-checkout receipt modal (Print via browser dialog / Bluetooth thermal / PDF, working for both
-online and offline-queued sales) — previously there was no way to hand a customer a receipt from POS
-at all. Changed POS Discount from a flat Rs amount to a percentage that auto-computes the Rs discount
-and total. Redesigned Dashboard Home and Sales (as an "Orders"-style view) to match a reference
-admin-dashboard screenshot the user shared — new `StatCard` and `PaymentBadge` components, a real
-`GET /api/sales/summary` aggregate endpoint, CSV export, row checkboxes — then fixed three rounds of
-follow-up visual-quality complaints on that redesign: "rough"-looking sparklines (root cause was real
-sparse sales data drawing a misleading spike through a zero-filled line chart — switched to daily
-bars), the same root cause on the big 14-day trend chart (plus a "natural" curve-type experiment that
-overshot below the zero baseline — reverted to `monotone`), and an uneven 6-card stat grid (auto-fit
-stranding one card alone on its own row, plus inconsistent row-to-row card heights — fixed with a
-scoped fixed-column grid and a fixed card height). See the new dated section below for detail. Every
-fix was verified against real DOM measurements or a fresh DB query after each complaint, not assumed
-correct from a screenshot._
+_Last updated: 2026-08-09 (later same day) — a full Dashboard/sidebar/topbar redesign on top of the
+earlier same-day StatCard/Sales redesign pass. User shared a second, more elaborate reference
+dashboard screenshot and asked to match it, keeping the existing grey sidebar. Rebuilt
+`DashboardLayout.jsx` (icon+label nav, a working hamburger collapse toggle, a real product search bar,
+a user-avatar dropdown menu) and `DashboardHome.jsx` entirely (welcome banner with a live rolling
+7-day date range, 5 stat cards with real week-over-week trend %, a Sales Overview chart + metric
+strip, Top Selling Products list, Recent Orders table, Stock Summary donut) — all backed by new
+aggregate queries in `reportController.js`, not fabricated numbers. Deliberately skipped dark mode (no
+dark theme exists in this codebase) and a shop-switcher dropdown (this app is single-shop per account)
+rather than ship dead UI for either. Replaced the notification bell's literal 🔔 emoji with a proper
+icon. Per an explicit same-day follow-up, the sidebar header was changed twice — first to show the
+shop name, then to show the logged-in user's name + role instead, with the shop name staying in the
+topbar badge. Verified the entire "every number is real" claim end-to-end by completing an actual POS
+sale and confirming the Dashboard's numbers/chart/table updated correctly afterward, then reverting
+the test sale. See the new dated section below for full detail._
 
 ---
 
@@ -387,6 +387,64 @@ mirrored into `schema.sql` (which had drifted from the live DB — see Decision 
 
 ---
 
+## 2026-08-09 pass (part 2): stat-card clipping fix, then a full Dashboard/sidebar/topbar redesign
+
+1. **Fixed: "Rs 0" and "0" were visibly cut off, and bars showed on a card with no sales today.**
+   The `168px` fixed card height from the pass above turned out to be a few px too tight for a
+   sparkline card's real content stack (measured: ~178px needed). Flexbox's default `flex-shrink:1`
+   was silently compressing the value text's box below its own line-height to force it to fit
+   (30.4px rendered vs 43.52px natural), and `overflow:hidden` cropped the digits. Fixed by
+   increasing the card height to `184px` (measured properly this time) and adding `flex-shrink:0` to
+   the value element as a permanent guard — if content ever overflows again, the sparkline should
+   give way, never the number. Separately, Today's Sales / Transactions Today only show their
+   sparkline once *today itself* has a non-zero value — showing 14-day history bars next to a "Rs 0"
+   headline (both explicitly "Today"-scoped) read as contradictory.
+2. **Full redesign: Dashboard, sidebar, and topbar to match a second reference screenshot.** User
+   shared a more elaborate admin-dashboard reference (welcome banner, 5 icon-square stat cards, sales
+   chart + metric strip, top-products list, recent-orders table, stock donut, icon+label sidebar,
+   topbar search/dark-mode/shop-switcher/avatar) and asked to match it, adapted to real data, keeping
+   the existing grey sidebar.
+   - **Sidebar**: icon+label nav rows, a working hamburger collapse toggle (manually triggerable at
+     any width, reusing the same 72px icon-rail treatment the `<=768px` breakpoint already had).
+     Header shows the logged-in user's name + role (see item 3) instead of app branding.
+   - **Topbar**: a *real* product search (debounced, hits the existing `search=` param on
+     `GET /api/products`, live dropdown of name/SKU/price/stock) — not a decorative box. A user-avatar
+     dropdown menu (Profile/Logout) replacing the old plain text link. A shop-name badge.
+   - **Dashboard Home**: welcome banner with a live rolling-7-day date range (recomputed from the
+     real system date on every render, not a fixed string); 5 new `TrendStatCard`s (Total Sales,
+     Orders, Profit, Low Stock, Customers) with real week-over-week trend percentages from new
+     backend aggregates (`weekComparison` in `reportController.js` — rolling 7-day "this week"/"last
+     week" windows, not calendar Mon–Sun weeks); a Sales Overview chart + 4-metric strip (swapped the
+     reference's "Conversion Rate" for "Items Sold" — this POS has no visit/traffic data to compute a
+     real conversion rate from, so a real available metric was substituted rather than a fake one);
+     Top Selling Products ranked list (generic package icon, since no product-image system exists);
+     Recent Orders preview table; a Stock Summary donut chart.
+   - **Deliberately not built**: dark mode (no dark theme/token set exists anywhere in this codebase)
+     and a shop-switcher dropdown (this app is single-shop per account, nothing to switch between) —
+     flagged to the user instead of shipping toggles/dropdowns that would do nothing.
+   - **Bugs found and fixed during verification**: two stat cards briefly rendered as blue underlined
+     links because a CSS class name was reused from `StatCard.css`, which the Dashboard page never
+     imports (fixed with a dedicated class in `TrendStatCard.css` instead); a React "key prop spread
+     into JSX" console warning from spreading a card-config object that carried its own `key` field
+     (fixed by destructuring `key` out before the spread). A moment where the sidebar-collapse toggle
+     *appeared* broken turned out to be a stale Vite HMR/Fast-Refresh state, resolved by a full dev
+     server restart — not a real code bug.
+   - **Verified end-to-end**: completed a real POS sale (3× Cola 1.5L, Rs 480), waited past the
+     15-second report cache window, and confirmed Total Sales/Orders/Profit/Items Sold and the Recent
+     Orders table all updated to the exact expected values on the Dashboard — then reverted the test
+     sale and restored stock via SQL.
+3. **Changed (twice, same day): what the sidebar header displays.** First changed from the static
+   "Retail Pro" app name to the shop's name (matching the reference's branding slot). Then, per a
+   direct follow-up request, changed again to show the *user's* name and their role/designation
+   (Owner/Manager/Cashier) instead — the shop name was not removed from the app, just relocated to
+   stay only in the topbar badge.
+4. **Fixed: the notification bell was a literal emoji.** `NotificationBell.jsx`'s bell icon was a
+   `🔔` emoji character inside a `<span>`, not an icon font or SVG — user correctly noticed "the bell
+   icon seems like an emoji" because it was one. Replaced with `react-icons/fi`'s `FiBell` to match
+   every other icon in the redesigned topbar/sidebar.
+
+---
+
 ## Key facts an agent should know before touching this project
 
 - **This Supabase project hosts another, unrelated app** in the `public` schema. RetailPro lives entirely
@@ -626,6 +684,36 @@ frontend/src/
 └── pages/dashboard/POS.css            + .pos-receipt-print styles and @media print isolation rules
 ```
 
+### New/changed in the 2026-08-09 pass, part 2 (not yet reflected in the tree above)
+
+```
+backend/src/
+└── controllers/reportController.js    getDashboardOverview extended: + weekComparison
+                                          (thisWeek/lastWeek sales/orders/profit/itemsSold/
+                                          newCustomers), + stockBreakdown, + summary.totalCustomers,
+                                          + recentSales, bestSellers now includes sku
+
+frontend/src/
+├── components/TrendStatCard.jsx       NEW - icon-square stat card with a trend %/arrow badge and
+│                                         a "vs last week X" comparison line
+├── components/TrendStatCard.css       NEW
+├── components/StatCard.css            + .stat-card-v2 height 168px -> 184px (fixed a real text-
+│                                         clipping bug), + flex-shrink:0 on the value as a guard
+├── components/NotificationBell.jsx    Bell icon: literal 🔔 emoji -> react-icons/fi FiBell
+├── components/NotificationBell.css    .notif-bell: font-size sizing -> flex centering (for the SVG)
+├── layouts/DashboardLayout.jsx        Full rewrite - icon+label nav, hamburger collapse toggle,
+│                                         TopbarSearch (real product search + dropdown), UserMenu
+│                                         (avatar/Profile/Logout), shop-name topbar badge, sidebar
+│                                         header now shows the logged-in user's name + role (not
+│                                         the shop name - see 2026-08-09 part 2 notes for why)
+├── layouts/DashboardLayout.css        Full rewrite to match - grey sidebar color preserved per
+│                                         explicit instruction; new collapse/search/user-menu styles
+└── pages/dashboard/DashboardHome.jsx  Full rewrite - welcome banner, 5 TrendStatCards, Sales
+    + .css                               Overview + metric strip, Top Selling Products, Recent
+                                          Orders, Stock Summary donut; sparkline hidden when today's
+                                          own value is 0 (was showing bars next to "Rs 0")
+```
+
 ---
 
 ## Open items
@@ -679,9 +767,21 @@ frontend/src/
       curve overshoot lesson)
 - [x] ~~Fix the uneven/lopsided 6-card dashboard stat grid~~ — done 2026-08-09 (fixed 3/2/1-column
       layout + fixed card height, scoped to the Dashboard only)
-- [ ] **Push local `main` to `origin/main`** — as of 2026-08-09, local is 2 commits ahead
-      (`857ed9a`, `4929a31`) covering the platform-admin/branches/payment-scaffold pass and this
-      POS-receipt/dashboard-redesign pass; not yet pushed, only committed locally
+- [x] ~~Fix "Rs 0"/"0" text clipping on stat cards, and bars showing with no sales today~~ — done
+      2026-08-09 (card height 168px -> 184px + flex-shrink:0 guard; sparkline hidden when today's
+      own value is 0)
+- [x] ~~Redesign the Dashboard/sidebar/topbar to match a second, more elaborate reference
+      screenshot~~ — done 2026-08-09 (icon+label sidebar, collapse toggle, real product search,
+      user menu, welcome banner, 5 trend stat cards, Sales Overview + metric strip, Top Selling
+      Products, Recent Orders, Stock Summary donut — verified end-to-end against a real POS sale)
+- [x] ~~Fix the notification bell rendering as a literal emoji~~ — done 2026-08-09 (was a real 🔔
+      character, replaced with the FiBell icon)
+- [x] ~~Show the shop name / then the user's name+role in the sidebar~~ — done 2026-08-09 (changed
+      twice per explicit follow-up requests; shop name still shown separately in the topbar badge)
+- [ ] **Push local `main` to `origin/main`** — as of 2026-08-09, local is 4 commits ahead
+      (`857ed9a`, `4929a31`, `6faaf47`, `c7fdbbc`) covering the platform-admin/branches/payment-
+      scaffold pass, the POS-receipt/percentage-discount + first dashboard redesign pass, and the
+      full Dashboard/sidebar/topbar redesign pass; not yet pushed, only committed locally
 
 **Deferred by explicit user instruction, not built:** the "Target and Suggestion" monthly profit-goal
 feature (owner sets a target, app compares to actual profit and suggests products/strategy) — see

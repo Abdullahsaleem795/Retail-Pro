@@ -1,60 +1,105 @@
 import { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
 import { motion } from 'framer-motion';
+import 'barcode-detector';
 import './BarcodeScanner.css';
 
+// Retail-relevant 1D formats only - matches what a shop actually sells
+// (packaged goods use EAN/UPC; some suppliers still use Code128/39).
+const RETAIL_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'itf', 'codabar'];
+
+// Detection interval - fast enough to feel instant, not so fast it pegs the
+// CPU running a WASM decode on every single video frame.
+const DETECT_INTERVAL_MS = 200;
+
 export default function BarcodeScanner({ onDetected, onClose }) {
+  const videoRef = useRef(null);
   const [error, setError] = useState('');
-  const scannerRef = useRef(null);
-  const mountLock = useRef(false);
+  // Serializes camera start/stop across React StrictMode's dev-mode double-
+  // invoke (mount -> cleanup -> mount): each new effect instance awaits the
+  // PREVIOUS instance's full teardown (camera released) before requesting
+  // its own stream, so two camera feeds can never be live/writing into the
+  // video element at once - which is what "split screen" symptoms actually
+  // are under the hood.
+  const teardownChainRef = useRef(Promise.resolve());
 
   useEffect(() => {
-    // Prevent React 18 StrictMode double-mounting from creating multiple video elements
-    if (mountLock.current) return;
-    mountLock.current = true;
+    let cancelled = false;
+    let stream = null;
+    let intervalId = null;
+    let resolveTeardown;
+    const teardownPromise = new Promise((resolve) => { resolveTeardown = resolve; });
 
-    let isUnmounted = false;
-    
-    // Force clear any leftover DOM elements from hot-reloads
-    const readerDiv = document.getElementById("reader");
-    if (readerDiv) readerDiv.innerHTML = "";
+    const previousTeardown = teardownChainRef.current;
+    teardownChainRef.current = previousTeardown.then(() => teardownPromise);
 
-    const html5QrCode = new Html5Qrcode("reader");
-    scannerRef.current = html5QrCode;
+    const getCameraStream = async () => {
+      try {
+        // Prefer the back camera on a phone.
+        return await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      } catch {
+        // Laptops/desktops often have no "environment" camera at all, which
+        // throws OverconstrainedError - fall back to whatever camera exists.
+        return navigator.mediaDevices.getUserMedia({ video: true });
+      }
+    };
 
-    html5QrCode.start(
-      { facingMode: "environment" },
-      {
-        fps: 10,
-        qrbox: { width: 300, height: 150 }
-      },
-      (decodedText) => {
-        if (!isUnmounted) {
-          isUnmounted = true;
-          if (scannerRef.current && scannerRef.current.isScanning) {
-            scannerRef.current.stop().then(() => {
-              onDetected(decodedText);
-            }).catch(() => {
-              onDetected(decodedText);
-            });
-          } else {
-             onDetected(decodedText);
+    (async () => {
+      await previousTeardown;
+      if (cancelled) {
+        resolveTeardown();
+        return;
+      }
+      try {
+        stream = await getCameraStream();
+      } catch {
+        if (!cancelled) setError('Could not access the camera. Check camera permissions and try again.');
+        resolveTeardown();
+        return;
+      }
+      if (cancelled || !videoRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        resolveTeardown();
+        return;
+      }
+
+      videoRef.current.srcObject = stream;
+      try {
+        await videoRef.current.play();
+      } catch {
+        // Autoplay can reject if the tab lost focus mid-start; the video
+        // still plays once the element is visible, no need to hard-fail.
+      }
+
+      // window.BarcodeDetector is the browser's native, hardware-accelerated
+      // implementation when available (Chrome/Edge); the 'barcode-detector'
+      // import above only fills it in with a ZXing-WASM fallback when the
+      // browser has no native support (Safari/Firefox) - same code path
+      // either way, always the best engine actually available.
+      const detector = new window.BarcodeDetector({ formats: RETAIL_FORMATS });
+
+      intervalId = setInterval(async () => {
+        if (cancelled || !videoRef.current || videoRef.current.readyState < 2) return;
+        try {
+          const codes = await detector.detect(videoRef.current);
+          if (codes.length > 0 && !cancelled) {
+            cancelled = true;
+            clearInterval(intervalId);
+            stream.getTracks().forEach((t) => t.stop());
+            onDetected(codes[0].rawValue);
+            resolveTeardown();
           }
+        } catch {
+          // A single failed frame decode isn't an error worth surfacing -
+          // the next interval tick just tries again.
         }
-      },
-      () => { /* Ignore empty frames */ }
-    ).catch(err => {
-      if (!isUnmounted) setError("Failed to start camera: " + err);
-    });
+      }, DETECT_INTERVAL_MS);
+    })();
 
     return () => {
-      isUnmounted = true;
-      if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().then(() => {
-          scannerRef.current.clear();
-        }).catch(e => console.error(e));
-      }
-      mountLock.current = false;
+      cancelled = true;
+      if (intervalId) clearInterval(intervalId);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+      resolveTeardown();
     };
   }, [onDetected]);
 
@@ -69,15 +114,16 @@ export default function BarcodeScanner({ onDetected, onClose }) {
       >
         <div className="modal-title">Scan Barcode</div>
 
-        <div className="scanner-view" style={{ overflow: 'hidden', borderRadius: '8px', minHeight: '200px' }}>
-          <div id="reader" style={{ width: '100%' }}></div>
+        <div className="scanner-view">
+          <video ref={videoRef} className="scanner-video" muted playsInline autoPlay />
+          {!error && <div className="scanner-guide" aria-hidden="true" />}
         </div>
 
         {error && <p className="scanner-error">{error}</p>}
-        
+
         {!error && (
-          <p className="scanner-hint" style={{ marginTop: '15px' }}>
-            <strong>Important:</strong> Watch out for screen glare! Ensure the barcode lines are not covered by white light reflection.
+          <p className="scanner-hint">
+            <strong>Tip:</strong> hold the barcode steady inside the frame, and watch out for glare.
           </p>
         )}
 

@@ -3,25 +3,45 @@
   border-radius: 12px;
   padding: 1.5rem;
   width: 100%;
-  max-width: 380px;
+  max-width: 420px;
   display: flex;
   flex-direction: column;
 }
 
+/* One single video feed fills this box - no split panes, no side-by-side
+   camera/preview layout. The scan-guide box below is a CSS overlay drawn on
+   top of that one feed, not a second region. */
 .scanner-view {
+  position: relative;
   width: 100%;
-  min-height: 220px;
+  aspect-ratio: 4 / 3;
   background: #0f172a;
   border-radius: 8px;
   overflow: hidden;
 }
 
-.scanner-view video {
-  display: block;
+.scanner-video {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-height: 220px;
+  height: 100%;
   object-fit: cover;
-  border-radius: 8px;
+}
+
+/* A simple centered guide box (border only, transparent center) so the
+   shopkeeper knows where to hold the barcode - purely a visual aid drawn
+   over the single video feed, not a second panel. */
+.scanner-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 78%;
+  height: 40%;
+  border: 2px solid rgba(34, 197, 94, 0.9);
+  border-radius: 10px;
+  box-shadow: 0 0 0 999px rgba(15, 23, 42, 0.35);
+  pointer-events: none;
 }
 
 .scanner-hint {

@@ -8,6 +8,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // Registered manually in src/registerServiceWorker.js instead of the
+      // plugin's auto-injected script, so we can poll for updates ourselves -
+      // see that file for why the default injected script isn't enough for a
+      // POS tab that gets left open all day at a shop counter.
+      injectRegister: null,
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'RetailPro — Inventory & POS',

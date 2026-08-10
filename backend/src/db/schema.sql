@@ -348,9 +348,26 @@ CREATE TABLE {{SCHEMA}}.platform_payment_accounts (
   bank_title text,
   bank_name text,
   bank_iban text,
+  notify_email text,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO {{SCHEMA}}.platform_payment_accounts (id) VALUES (1);
+
+-- A LIST, unlike the single-bank fields above (bank_title/bank_name/bank_iban
+-- predate this table and are kept for backward compatibility, but a shop
+-- picks from platform_bank_accounts on its upgrade screen - see
+-- GET /api/shop/payment-accounts). Same admin-only edit path.
+CREATE TABLE {{SCHEMA}}.platform_bank_accounts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  bank_name text NOT NULL,
+  account_title text NOT NULL,
+  iban text,
+  account_number text,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_platform_bank_accounts_sort ON {{SCHEMA}}.platform_bank_accounts (sort_order, created_at);
 
 -- RLS enabled with intentionally NO policies on every table: this schema is
 -- accessed exclusively by the Express backend over a direct, credentialed
@@ -373,3 +390,4 @@ ALTER TABLE {{SCHEMA}}.branches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {{SCHEMA}}.stock_transfers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {{SCHEMA}}.stock_transfer_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE {{SCHEMA}}.platform_payment_accounts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE {{SCHEMA}}.platform_bank_accounts ENABLE ROW LEVEL SECURITY;

@@ -5,21 +5,20 @@ project context from conversation history.** Update both whenever something chan
 deployment status flip, a bug fix, a new module. Don't let this go stale; a wrong graph is worse than
 no graph.
 
-_Last updated: 2026-08-09 (later same day) — a full Dashboard/sidebar/topbar redesign on top of the
-earlier same-day StatCard/Sales redesign pass. User shared a second, more elaborate reference
-dashboard screenshot and asked to match it, keeping the existing grey sidebar. Rebuilt
-`DashboardLayout.jsx` (icon+label nav, a working hamburger collapse toggle, a real product search bar,
-a user-avatar dropdown menu) and `DashboardHome.jsx` entirely (welcome banner with a live rolling
-7-day date range, 5 stat cards with real week-over-week trend %, a Sales Overview chart + metric
-strip, Top Selling Products list, Recent Orders table, Stock Summary donut) — all backed by new
-aggregate queries in `reportController.js`, not fabricated numbers. Deliberately skipped dark mode (no
-dark theme exists in this codebase) and a shop-switcher dropdown (this app is single-shop per account)
-rather than ship dead UI for either. Replaced the notification bell's literal 🔔 emoji with a proper
-icon. Per an explicit same-day follow-up, the sidebar header was changed twice — first to show the
-shop name, then to show the logged-in user's name + role instead, with the shop name staying in the
-topbar badge. Verified the entire "every number is real" claim end-to-end by completing an actual POS
-sale and confirming the Dashboard's numbers/chart/table updated correctly afterward, then reverting
-the test sale. See the new dated section below for full detail._
+_Last updated: 2026-08-10 — two passes since the last update. (1) The camera barcode scanner was
+rebuilt a second time, off `@zxing/browser` entirely and onto the native `BarcodeDetector` Web API
+(via the `barcode-detector` polyfill package), fixing a StrictMode double-camera "split screen" bug
+and — critically — **getting a real, user-confirmed successful scan of a physical barcode via a phone
+camera**, closing an item that had been open since 2026-08-05. (2) A full subscription-billing arc:
+admin email notifications (with a real SMTP send verified into the operator's own inbox), a
+multi-bank-account system replacing the single hardcoded bank field (with hand-drawn brand-mark
+recreations for JazzCash/EasyPaisa/Meezan/HBL, iterated twice for visual accuracy per direct user
+feedback), Subscription & Billing split out of Settings into its own "Upgrade Plan" page, and a
+one-click "Confirm & Activate" link (HMAC-signed, reusing `PLATFORM_ADMIN_KEY` as the signing secret)
+sent to the admin so activating a request no longer means hunting down the shop and retyping the plan
+by hand — still gated by the same admin key, still requires a human to actually verify the payment
+landed (this was made explicit to the user directly: the system still cannot verify a real payment on
+its own, no gateway exists). See the two new dated sections below for full detail._
 
 ---
 
@@ -48,7 +47,7 @@ graph TD
 
     subgraph Gaps
         cron[node-cron WhatsApp scheduler<br/>⚠️ still cannot run on serverless]
-        pay[Subscription billing<br/>⚠️ manual TRX + WhatsApp ping,<br/>not a real payment gateway]
+        pay[Subscription billing<br/>⚠️ still manual verification —<br/>one-click admin confirm now exists,<br/>but no real payment gateway]
     end
 
     repo --> frontend
@@ -116,8 +115,8 @@ billing feature.
 | PWA | ✅ Built |
 | Performance pass (indexes, prefetch, skeleton loaders, compression) | ✅ Done, 5 commits, figures self-reported not re-benchmarked |
 | QA pass (auth/POS/inventory/UI edge cases) | ✅ 100/100 self-reported in `QA_REPORT.md` |
-| Subscription billing UI + backend | ✅ Built, request flow's 500 bug fixed, activation now admin-gated — still **manual** payment (no live gateway) |
-| Platform admin console (`/admin`) | ✅ **New 2026-08-03** — cross-tenant subscription activation, `PLATFORM_ADMIN_KEY`-gated |
+| Subscription billing UI + backend | ✅ Built, request flow's 500 bug fixed, activation admin-gated, **one-click activation link + admin email + multi-bank picker added 2026-08-10** — still **manual verification** (no live gateway) |
+| Platform admin console (`/admin`) | ✅ **New 2026-08-03**, extended 2026-08-05/2026-08-10 — cross-tenant subscription activation, `PLATFORM_ADMIN_KEY`-gated, now also manages bank accounts + notification email + one-click confirm links |
 | WhatsApp Cloud API automated cron reports | ✅ **Fixed 2026-08-03** — `/api/cron/*` + Vercel Cron Jobs; needs `CRON_SECRET` set on Vercel to go live |
 | WhatsApp wa.me manual deep-links (suppliers, low-stock, billing proof) | ✅ Built, still available as the manual path |
 | Thermal ESC/POS receipt printing | ✅ **New 2026-08-03** — Web Bluetooth, Chrome/Edge only, **not yet tested on real hardware** |
@@ -128,8 +127,12 @@ billing feature.
 | Notification bell mark-as-read | ✅ **Fixed 2026-08-05** — opening the panel now actually clears the badge |
 | Notification delete | ✅ **New 2026-08-05** — per-item delete, previously read-only-forever |
 | Customer delete permission gating | ✅ **Fixed 2026-08-05** — was completely unguarded, any cashier could delete a customer |
-| Camera barcode scanning | ⚠️ **Rebuilt 2026-08-05 on `@zxing/browser`/`@zxing/library`** — decode pipeline proven correct via offline test; StrictMode double-instance race and an upstream ZXing `TRY_HARDER` bug both found and fixed; **a live successful scan of a physical barcode was not yet confirmed by the user** |
+| Camera barcode scanning | ✅ **Rebuilt again 2026-08-09 on the native `BarcodeDetector` Web API** (`barcode-detector` polyfill — replaces the 2026-08-05 `@zxing/browser` build entirely) — StrictMode "split screen" race fixed with a serialized teardown chain; **a real physical barcode scan via a phone camera was confirmed working live by the user** (previous open item now closed) |
 | PIN quick-switch login | ✅ Built (predates this doc pass) — `POST /api/auth/pin-login`, 4-6 digit PIN, 5-attempt lockout (15 min), separate from password auth, see `authController.js` |
+| Admin email notifications on upgrade request | ✅ **New 2026-08-10** — SMTP via `emailService.js` (nodemailer), recipient is admin-configurable (`platform_payment_accounts.notify_email`), real send verified into the operator's own Gmail inbox |
+| Multi-bank payment accounts + brand-mark picker | ✅ **New 2026-08-10** — `platform_bank_accounts` table (was a single hardcoded bank), `PaymentMonogram.jsx` renders hand-drawn SVG recreations of JazzCash/EasyPaisa/Meezan/HBL (not licensed logo assets), any other bank falls back to a tinted-initials tile |
+| Subscription & Billing moved to its own page | ✅ **New 2026-08-10** — `Upgrade.jsx` (`/dashboard/upgrade`), split out of `Settings.jsx`, same `shop:settings` (owner-only) nav gate |
+| One-click "Confirm & Activate" admin link | ✅ **New 2026-08-10** — HMAC-signed token (`activationToken.js`, signed with `PLATFORM_ADMIN_KEY`) embedded in the email/WhatsApp ping; still requires the admin key to open, still requires a human to have actually verified the payment — **not** an automatic payment-verification mechanism, made explicit to the user |
 
 ---
 
@@ -445,6 +448,128 @@ mirrored into `schema.sql` (which had drifted from the live DB — see Decision 
 
 ---
 
+## 2026-08-09 pass (part 3): camera barcode scanner rebuilt again, on the native `BarcodeDetector` API
+
+1. **Rebuilt the camera scanner off `@zxing/browser` entirely, per direct user request** ("use the
+   best library that only professionals use... and don't divide the screen into two when scanning").
+   Replaced `html5-qrcode` → `@zxing/browser` (2026-08-05) with the `barcode-detector` npm package,
+   which ponyfills the browser's native, hardware-accelerated `BarcodeDetector` Web API when it exists
+   (Chrome/Edge — on-device, no WASM download) and falls back to a bundled ZXing-WebAssembly decoder
+   otherwise (Safari/Firefox) — same code path either way (`import 'barcode-detector'` just fills in
+   `window.BarcodeDetector` if it isn't already native), zero app-level branching. Chosen over
+   Scandit/Dynamsoft (paid commercial SDKs) after the user delegated the choice ("choose the best") —
+   free, no license, and the native engine on Chrome/Edge outperforms a pure-JS decoder anyway.
+2. **Fixed the actual "splits into two" symptom**, which was a React 18 StrictMode dev-mode
+   double-effect-invoke leaving two camera streams both capable of writing into the DOM/video element
+   briefly — same root-cause *family* as the 2026-08-05 ZXing StrictMode race, fixed the same way: a
+   `teardownChainRef` (a `useRef` holding a chained promise) that makes each new scanner instance await
+   the *previous* instance's full camera-teardown promise before requesting its own `getUserMedia`
+   stream. Verified live in real Chrome (not the sandboxed preview pane, which blocks camera access
+   entirely) that exactly one `<video>` element and one live track exist at a time, and that Cancel
+   fully releases the camera.
+3. **Proved the decode pipeline correct** the same way as 2026-08-05 — hand-built a bit-perfect,
+   checksum-valid EAN-13 barcode drawn to an off-screen `<canvas>`, fed through the exact same
+   `BarcodeDetector` instance/config the app uses, decoded correctly on the first attempt. This
+   isolated the next real-world failure (a laptop's fixed-focus 640×480 webcam not detecting a real,
+   physically-present barcode) to camera hardware/capture conditions, not a code bug — confirmed via
+   `track.getSettings()` that the webcam was hardware-capped at 640×480 even after requesting
+   1920×1080, giving only ~2px per barcode module.
+4. **Closed the open item from 2026-08-05**: got a real, live, user-confirmed successful scan. Since
+   the laptop webcam's resolution was a genuine hardware ceiling (not fixable in software), pivoted to
+   testing via the user's **phone** camera instead — required a real HTTPS deployment (`getUserMedia`
+   needs a secure context; a LAN-IP dev server over plain HTTP would not reliably grant camera
+   permission on mobile), so this fix was deployed to production specifically to enable that test.
+   Added a real test product (`Test Scan Item`, barcode `0792625892862`) to the user's actual
+   production shop, scanned it live via phone camera — detected correctly, matched the product, added
+   to the POS cart, and the user completed a real checkout. Test sale/product cleaned up afterward
+   (stock restored, sale + sale_items rows deleted).
+5. **Removed `html5-qrcode`, `@zxing/browser`, `@zxing/library` from `package.json` entirely** —
+   confirmed via grep that nothing else in `frontend/src` still imported them before removing. The
+   `zxing_tryharder_bug` node below (a real, confirmed-still-present upstream bug in
+   `@zxing/browser@0.2.1`) is now **historical only** — that exact library is no longer in this
+   codebase, though the *pattern it documents* (a third-party camera-decode library with an
+   uninitialized-field bug) is still worth knowing about if any future decode library is evaluated.
+
+---
+
+## 2026-08-10 pass: admin email notifications, multi-bank payment picker, dedicated Upgrade page, one-click activation
+
+1. **New: admin email notification on every upgrade request.** User asked to be emailed when a shop
+   buys Pro/Enterprise. Added `backend/src/services/emailService.js` (nodemailer, same
+   graceful-degradation pattern as `whatsappService.js` — logs and no-ops if SMTP env vars are unset
+   rather than throwing), wired into `requestSubscriptionUpgrade` alongside the existing WhatsApp ping.
+   The recipient is **not** hardcoded — it's a new `platform_payment_accounts.notify_email` column,
+   editable by the admin in `/admin` (Payment Accounts card). Verified with a real send: SMTP
+   configured against the operator's own Gmail (host `smtp.gmail.com`, a 16-char Google App Password —
+   never entered by the assistant directly, per the credential-handling rule; the user pasted their own
+   app password into `backend/.env` themselves), a live email actually landed in their inbox with
+   subject `"{Plan} plan purchased by {owner name}"`.
+2. **New: multi-bank payment accounts, replacing the single hardcoded bank field.** The live
+   `platform_payment_accounts` row had `bank_name = "Meezan / HBL"` — two banks jammed into one text
+   field, because the old schema only had room for one. Added a proper `platform_bank_accounts` table
+   (list, not singleton), full CRUD at `/api/admin/bank-accounts` (admin-key gated), a shop-facing list
+   via the existing `GET /api/shop/payment-accounts` (now also returns a `banks` array), and a
+   `BankAccountsCard` in `/admin` to manage them. A migration backfilled the existing "Meezan / HBL"
+   value as one bank row so nothing disappeared from the shop's upgrade screen on deploy.
+3. **New: `PaymentMonogram.jsx` — brand-mark tiles for the payment picker, not real logo assets.**
+   Deliberately not remote/embedded trademarked logo images (licensing risk, and a broken `<img>` on a
+   billing screen looks worse than a clean fallback). For the four payment methods this platform
+   actually settles through (JazzCash, EasyPaisa, Meezan, HBL), hand-drew SVG recreations using each
+   brand's real colors — the same nominative-use approach any checkout page uses to show a simplified
+   Visa/Mastercard mark. Iterated **twice**: the first pass was a rough gestural approximation the user
+   directly rejected ("they aren't same... make the monogram exact"); rebuilt using a side-by-side test
+   page against the user's own reference images for closer shape fidelity (JazzCash's interlocking
+   paisley crescents, EasyPaisa's asymmetric "e" with a green swoosh, Meezan's 3-triangle mountain
+   emblem inside a purple/green ring, HBL's double right-pointing chevron) before porting into the real
+   component. Any bank without a hand-drawn mark (i.e. every bank except these four) falls back to a
+   tinted-initials tile (`bankBrand.js` — ~25 known Pakistani banks get real brand colors, anything else
+   gets a stable hash-derived color) — no licensing needed for the fallback path at all.
+4. **Changed: Subscription & Billing moved out of Settings into its own "Upgrade Plan" page.** User
+   flagged this as its own distinct workflow buried inside shop-profile fields. Moved the entire card
+   (plan comparison, payment-method picker, upgrade-request form) from `Settings.jsx` into a new
+   `Upgrade.jsx` at `/dashboard/upgrade`, with its own sidebar nav entry (credit-card icon) using the
+   *same* `shop:settings` permission gate Settings used — owner-only on the backend, so visibility
+   didn't change, only location. `Settings.jsx` now only has Language + Shop Profile.
+5. **New: one-click "Confirm & Activate" admin link.** User asked for automatic activation once a shop
+   pays; after being walked through why *fully* automatic isn't safe without a real payment gateway
+   (see decision log), the user picked the safest available middle ground: a signed link the admin
+   clicks to activate instantly, rather than manually finding the shop and retyping plan/duration.
+   `backend/src/utils/activationToken.js` signs `{shopId, shopName, plan, durationMonths,
+   paymentChannel, transactionId}` with HMAC-SHA256 using `PLATFORM_ADMIN_KEY` as the secret (no new
+   env var — the key already exists, is already secret, and rotating it naturally invalidates
+   outstanding links too). The link (`/admin/confirm/:token`) is embedded in both the WhatsApp ping and
+   the admin email (a real styled button in the HTML body). Opening it still requires unlocking the
+   console with `PLATFORM_ADMIN_KEY` — the token is not itself a credential, only a pre-fill — and the
+   signature is independently re-verified server-side (`confirmActivationToken` in `adminController.js`)
+   before any database write happens, so a tampered/forged/expired token (tested: garbage token → 400,
+   manually-crafted expired token → 400, missing admin key → 401) can never activate anything.
+   `performActivation()` was factored out of `activateSubscription` so the manual-form path and the
+   one-click-link path share one write path and one in-app-notification path, and can never drift.
+6. **New: owner-facing notification wording, at both ends of the request.** User asked that the shop
+   owner get a "you'll shortly receive a confirmation message"-style notification on submit, and a
+   distinct one once the admin confirms. Both already had an in-app `notifications` insert, but the
+   copy didn't set that expectation. Request-submit now inserts `"Upgrade Request Received"` —
+   *"We've received your {Plan} plan request ({channel}, TRX: {id}). You'll get a confirmation
+   notification here as soon as it's verified and activated."* — and the immediate toast on submit
+   echoes the same reassurance. Activation now inserts `"Subscription Confirmed"` — *"Your payment has
+   been confirmed! The {Plan} plan is now active until {date}."* — with separate wording for a
+   complimentary/free grant (`"You've been given free access..."`, since "confirmed" would be
+   misleading when the owner never submitted anything for review). Added `subscription` to
+   `NotificationBell.jsx`'s `TYPE_LABELS` map so these render with a proper pill instead of the raw
+   type string. Verified live end-to-end, including the 15-second `notifications` response cache
+   (`notificationController.js` — inserts don't bust it, only `deleteNotification` does) — waited it
+   out rather than misreading a stale pre-confirm response as a bug.
+7. **Explicit, direct clarification given to the user: the system still cannot verify a real payment.**
+   Asked "how will you know the payment is actually made?" — answered plainly: nothing here checks a
+   bank/wallet balance. The shop owner's transaction ID is a claim, not proof; the one-click link only
+   removes *lookup and retyping* friction, not the *judgment call*. The admin is still expected to
+   check their own JazzCash/EasyPaisa/bank account before clicking confirm — the confirm page's own
+   copy says so ("Make sure this payment actually landed in your account before confirming"). True
+   automatic verification needs a real payment gateway (JazzCash/EasyPaisa Merchant API, or an
+   aggregator like Safepay/PayFast) sending a signed webhook — not built, no merchant credentials exist.
+
+---
+
 ## Key facts an agent should know before touching this project
 
 - **This Supabase project hosts another, unrelated app** in the `public` schema. RetailPro lives entirely
@@ -472,19 +597,49 @@ mirrored into `schema.sql` (which had drifted from the live DB — see Decision 
   raw phone column. This exact bug silently broke every WhatsApp touchpoint in production until fixed
   2026-08-05.
 - **React 18 StrictMode + any imperative camera/video library is a known trap.** Dev-mode double-invokes
-  every effect (mount → cleanup → mount), and camera-decoding libraries (`html5-qrcode`, `@zxing/browser`)
-  manipulate the DOM/video element directly rather than through React state. If cleanup checks a
-  synchronous "is it running" flag before an async `start()` has resolved, or if `.stop()` from a stale
-  instance runs after a newer instance already attached its stream, you get two competing camera feeds
-  or a wiped-out working one. See `feature_barcode`/`BarcodeScanner.jsx`'s `teardownChainRef` pattern
-  before touching this component again.
-- **`@zxing/browser@0.2.1`'s `DecodeHintType.TRY_HARDER` is broken** — throws
-  `"Could not create a Canvas element."` on every frame due to an uninitialized field
-  (`tempCanvasElement` checked against `null` but left `undefined`). Don't re-enable it without
-  checking if a newer release has fixed it first.
+  every effect (mount → cleanup → mount), and camera-decoding libraries (previously `html5-qrcode`, then
+  `@zxing/browser`, now `barcode-detector`'s native `BarcodeDetector`) manipulate the DOM/video element
+  directly rather than through React state. If cleanup checks a synchronous "is it running" flag before
+  an async `start()` has resolved, or if teardown from a stale instance runs after a newer instance
+  already attached its stream, you get two competing camera feeds or a wiped-out working one. See
+  `feature_barcode`/`BarcodeScanner.jsx`'s `teardownChainRef` pattern (present in every rebuild of this
+  component so far) before touching it again.
+- **`@zxing/browser`/`@zxing/library` are NO LONGER USED as of 2026-08-09** — the camera scanner was
+  rebuilt onto the native `BarcodeDetector` Web API (`barcode-detector` package). The
+  `@zxing/browser@0.2.1` `TRY_HARDER` bug documented below/in `knowledge-graph.json` is now **historical
+  only** — don't spend time re-checking whether it's fixed upstream, that library isn't in this codebase
+  anymore. The pattern (imperative library, uninitialized-field bug) is still a useful cautionary example
+  if evaluating any *future* decode library.
+- **`PLATFORM_ADMIN_KEY` now does double duty**: it still gates every `/api/admin/*` route (unchanged),
+  and as of 2026-08-10 it's also the HMAC-SHA256 signing secret for the one-click activation token
+  (`backend/src/utils/activationToken.js`). This was a deliberate choice to avoid a second secret — the
+  key is already operator-only and already secret, and rotating it naturally invalidates any outstanding
+  activation links too. If `PLATFORM_ADMIN_KEY` is ever rotated, every previously-sent activation link
+  becomes invalid (fails signature verification) — that's expected, not a bug.
+- **`PaymentMonogram.jsx`'s JazzCash/EasyPaisa/Meezan/HBL marks are hand-drawn SVG recreations, not
+  real logo assets.** Deliberate — redistributing actual trademarked brand artwork wasn't done; these are
+  built from scratch using each brand's real colors (same nominative-use approach any checkout page uses
+  for a simplified card-network icon). Any bank without one of these four falls back to a tinted-initials
+  tile from `bankBrand.js`. If asked to make these "exact," treat it as "closer visual fidelity to the
+  real mark," not "byte-identical to a supplied image" — that was already interpreted this way once
+  (2026-08-10) after the first pass was rejected as too rough.
+- **The admin's notification email is NOT an env var** — it's `platform_payment_accounts.notify_email`,
+  editable by the admin in `/admin` → Payment Accounts. `EMAIL_HOST/PORT/USER/PASS/FROM` in
+  `backend/.env` configure the *sending* SMTP account (the operator's own Gmail as of 2026-08-10); the
+  *recipient* is this DB field, which can be blank (the email silently no-ops, same graceful-degradation
+  pattern as `whatsappService.js` when WhatsApp creds are unset).
 - **Customer delete/create/update had zero permission gating until 2026-08-05** — if you're auditing
   permission coverage across entities again, check `customerRoutes.js` first; it's the one that
   historically drifted from the `requirePermission(PERMISSIONS.*_MANAGE)` pattern every sibling route uses.
+- **`backend/src/db/schema.sql` drifted from the live DB again, as of 2026-08-10 — found and fixed the
+  same session.** The `platform_bank_accounts` table and `platform_payment_accounts.notify_email` column
+  had both been added to the **live** Supabase schema via direct migrations, but neither was mirrored
+  into `schema.sql` — the exact same class of bug that caused a real production 500 in the 2026-08-03
+  pass. Fixed immediately (mirrored both, matching live column types exactly) and verified by rebuilding
+  `retailpro_test` from the file and re-running the full 48-test suite clean. Still worth remembering:
+  **a passing test suite alone never proves schema.sql is in sync** — it only proves the tests that exist
+  don't touch the drifted part. Re-check `schema.sql` against the live DB after any `apply_migration` call,
+  don't assume the graph note above means this can't happen a third time.
 
 ---
 
@@ -714,6 +869,72 @@ frontend/src/
                                           own value is 0 (was showing bars next to "Rs 0")
 ```
 
+### New/changed in the 2026-08-09 pass, part 3 (not yet reflected in the tree above)
+
+```
+frontend/
+├── package.json                       - html5-qrcode, @zxing/browser, @zxing/library
+│                                       + barcode-detector (native BarcodeDetector ponyfill/fallback)
+└── src/components/
+    ├── BarcodeScanner.jsx             Rebuilt again - now on window.BarcodeDetector (native or the
+    │                                     barcode-detector package's ZXing-WASM fallback), same
+    │                                     teardownChainRef StrictMode-serialization pattern as the
+    │                                     2026-08-05 build; RETAIL_FORMATS restricted the same way
+    │                                     POSSIBLE_FORMATS was before
+    └── BarcodeScanner.css             Single undivided video view - the reported "split screen" bug's
+                                          actual fix; scan-guide overlay drawn on top of the one feed
+```
+
+### New/changed in the 2026-08-10 pass (not yet reflected in the tree above)
+
+```
+backend/src/
+├── utils/activationToken.js           NEW - HMAC-SHA256 sign()/verify() for the one-click activation
+│                                         link, secret = PLATFORM_ADMIN_KEY (no new env var)
+├── services/emailService.js           NEW - nodemailer SMTP send, same graceful-no-op-if-unconfigured
+│                                         pattern as whatsappService.js; sendUpgradePurchaseNotification
+│                                         builds both a plain-text and an HTML body (real button) for
+│                                         the Confirm & Activate link
+├── controllers/adminController.js     + performActivation() (shared by activateSubscription and the
+│                                         new confirmActivationToken - one write path, one notification
+│                                         path for both); + confirmActivationToken; + listBankAccounts/
+│                                         createBankAccount/updateBankAccount/deleteBankAccount;
+│                                         updatePaymentAccounts + notifyEmail
+├── controllers/shopController.js      requestSubscriptionUpgrade now also: signs an activationToken,
+│                                         builds the confirmUrl, includes it in the WhatsApp message,
+│                                         passes it to sendUpgradePurchaseNotification; getPaymentAccounts
+│                                         now also returns a `banks` array; owner-facing notification
+│                                         copy rewritten (see 2026-08-10 pass notes)
+├── routes/adminRoutes.js              + POST /subscription/confirm-token, + /bank-accounts CRUD routes
+└── db (live Supabase, mirrored nowhere else yet - see Open items)
+    ├── platform_payment_accounts      + notify_email column
+    └── platform_bank_accounts         NEW table (id, bank_name, account_title, iban, account_number,
+                                          sort_order) - backfilled from the old single bank_* fields
+
+frontend/src/
+├── components/PaymentMonogram.jsx     NEW - brand-mark tile: hand-drawn SVG for JazzCash/EasyPaisa/
+│                                         Meezan/HBL, tinted-initials fallback (via bankBrand.js) for
+│                                         every other bank
+├── utils/bankBrand.js                 NEW - name-pattern -> {initials, color, logo} for ~25 known
+│                                         Pakistani banks + JazzCash/EasyPaisa; unknown banks get a
+│                                         stable hash-derived fallback color
+├── pages/dashboard/Upgrade.jsx        NEW - Subscription & Billing moved here from Settings.jsx
+│                                         (plan cards, payment-method picker w/ PaymentMonogram,
+│                                         upgrade-request form) - same content, new route
+├── pages/dashboard/Settings.jsx       Subscription & Billing card REMOVED (moved to Upgrade.jsx) -
+│                                         now only Language + Shop Profile
+├── pages/dashboard/Settings.css       + .pay-method/.pay-mark/.pay-group etc. (shared by Upgrade.jsx)
+├── pages/AdminConsole.jsx             + BankAccountsCard (list/add/edit/remove banks); + notifyEmail
+│                                         field on PaymentAccountsCard; + ConfirmActivation (named
+│                                         export, separate lazy route) - the one-click link's landing
+│                                         page, reuses KeyGate
+├── App.jsx                            + /dashboard/upgrade route; + /admin/confirm/:token route
+├── layouts/DashboardLayout.jsx        + "Upgrade Plan" nav item (credit-card icon, same shop:settings
+│                                         gate as Settings)
+├── components/NotificationBell.jsx    + 'subscription' in TYPE_LABELS
+└── i18n/{en,ur}.json                  + nav.upgrade
+```
+
 ---
 
 ## Open items
@@ -728,15 +949,27 @@ frontend/src/
       account exists — the scaffold is ready, `isConfigured()` just needs the env vars to return true
 - [ ] Reconsider `pg.Pool` sizing (`max: 10`) for serverless cold starts under real load
 - [ ] Rotate the Supabase DB password (shared in chat during original setup)
-- [ ] **Get final user confirmation that a real physical barcode scan succeeds end-to-end** — the
-      decode pipeline is proven correct via an offline synthetic-barcode test (2026-08-05), and every
-      known code-level bug (StrictMode race, tiny scan box, broken TRY_HARDER) has been fixed, but a
-      live successful scan of a real product barcode was never confirmed by the user in this pass —
-      don't assume this is fully done until that happens
-- [ ] Confirm `@zxing/browser`'s `TRY_HARDER` bug (uninitialized `tempCanvasElement` field) against
-      any future version bump — re-enable it if a release ever fixes it, since it meaningfully helps
-      with imperfect/blurry real-world scans; as of 2026-08-05, 0.2.1 is the latest published version
-      and the bug is still present
+- [x] ~~Mirror `platform_bank_accounts` and `platform_payment_accounts.notify_email` into
+      `backend/src/db/schema.sql`~~ — **fixed 2026-08-10**, same session it was found in. Added the
+      `platform_bank_accounts` table (matching the live column types exactly) and the `notify_email`
+      column to `schema.sql`, plus the matching `ENABLE ROW LEVEL SECURITY` line. Verified by actually
+      rebuilding `retailpro_test` from the updated file (Jest's `globalSetup.js` does this before every
+      run) and confirming 48/48 tests still pass — a DDL syntax error would have failed the whole suite
+      immediately, so this is real proof the fix is valid, not just "looks right."
+- [ ] **Set `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASS`/`EMAIL_FROM` as Vercel env vars on the
+      backend deployment** — configured and verified working in local `backend/.env` only (2026-08-10);
+      the admin-upgrade-notification email will silently no-op on production until these are set there too
+- [ ] Integrate a real payment gateway (JazzCash/EasyPaisa Merchant API webhook, or an aggregator like
+      Safepay/PayFast) if genuinely automatic payment verification is ever wanted — the one-click
+      "Confirm & Activate" link (2026-08-10) only speeds up the *admin's* manual verification step, it
+      does not verify a payment on its own; this was explicitly discussed and confirmed with the user
+- [x] ~~Get final user confirmation that a real physical barcode scan succeeds end-to-end~~ — **done
+      2026-08-09**, via a phone camera against the production deployment (the laptop webcam's 640×480
+      hardware ceiling made it a marginal test device; phone camera + real HTTPS was the actual fix) —
+      full checkout completed and then cleaned up
+- [x] ~~Confirm `@zxing/browser`'s `TRY_HARDER` bug against any future version bump~~ — **moot as of
+      2026-08-09**, `@zxing/browser` was removed from the codebase entirely (rebuilt on the native
+      `BarcodeDetector` API instead); left in the graph as historical context only
 - [x] ~~Rebuild WhatsApp automated reports on Vercel Cron Jobs~~ — done 2026-08-03
 - [x] ~~Add a real admin-only guard to subscription activation~~ — done 2026-08-03
 - [x] ~~Re-run the 48-test Jest suite~~ — done 2026-08-03, 48/48 passing after schema + payment-provider changes
@@ -778,10 +1011,23 @@ frontend/src/
       character, replaced with the FiBell icon)
 - [x] ~~Show the shop name / then the user's name+role in the sidebar~~ — done 2026-08-09 (changed
       twice per explicit follow-up requests; shop name still shown separately in the topbar badge)
-- [ ] **Push local `main` to `origin/main`** — as of 2026-08-09, local is 4 commits ahead
-      (`857ed9a`, `4929a31`, `6faaf47`, `c7fdbbc`) covering the platform-admin/branches/payment-
-      scaffold pass, the POS-receipt/percentage-discount + first dashboard redesign pass, and the
-      full Dashboard/sidebar/topbar redesign pass; not yet pushed, only committed locally
+- [x] ~~Push local `main` to `origin/main`~~ — resolved; `main` and `origin/main` are in sync as of this
+      update (`255a5de`), and every commit since has been pushed immediately after being made, not
+      batched. If this note ever says otherwise again, check `git status -sb` before trusting it.
+- [x] ~~Rebuild the camera barcode scanner (again), fix the "split screen" bug, get a confirmed live
+      scan~~ — done 2026-08-09, on the native `BarcodeDetector` API — see the new dated section above
+- [x] ~~Email the platform admin when a shop requests Pro/Enterprise~~ — done 2026-08-10, real send
+      verified into the operator's own inbox
+- [x] ~~Let shops pick which bank they paid into, instead of one generic "Bank Transfer"~~ — done
+      2026-08-10 (`platform_bank_accounts`, `PaymentMonogram.jsx`)
+- [x] ~~Split Subscription & Billing out of Settings into its own page~~ — done 2026-08-10
+      (`Upgrade.jsx` at `/dashboard/upgrade`)
+- [x] ~~Add a faster admin path to activate a subscription than the manual list+form~~ — done 2026-08-10,
+      one-click signed-link activation; still requires the admin key and still requires manual payment
+      verification by design (no real gateway exists) — see the new dated section above for the full
+      security reasoning
+- [x] ~~Add a notification to the shop owner when they submit payment, and another when it's
+      confirmed~~ — done 2026-08-10
 
 **Deferred by explicit user instruction, not built:** the "Target and Suggestion" monthly profit-goal
 feature (owner sets a target, app compares to actual profit and suggests products/strategy) — see

@@ -3,9 +3,19 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { listSuppliers, createSupplier, updateSupplier, deleteSupplier } from '../../api/suppliers';
 import { sendSupplierOrderDraft } from '../../api/notifications';
+import { formatCurrency } from '../../utils/format';
 import SimpleFormModal from '../../components/SimpleFormModal';
 import ConfirmModal from '../../components/ConfirmModal';
 import './Inventory.css';
+
+// A filled badge/pill reads fine for a short status word, but for a currency
+// figure it looks like a sticker rather than a ledger value - plain weighted
+// text, colored only when there's actually something owed, reads calmer and
+// more like an accounting table.
+const balanceStyle = (balance) => ({
+  fontWeight: 600,
+  color: balance > 0 ? '#b45309' : '#64748b',
+});
 
 const FIELDS = [
   { name: 'name', label: 'Supplier Name', required: true },
@@ -113,7 +123,7 @@ export default function Suppliers() {
               setModalOpen(true);
             }}
           >
-            + Add Supplier
+            Add Supplier
           </button>
         </div>
       </div>
@@ -137,7 +147,7 @@ export default function Suppliers() {
               <th>Name</th>
               <th>Contact Person</th>
               <th>Phone</th>
-              <th>Balance Owed</th>
+              <th style={{ textAlign: 'right' }}>Balance Owed</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -152,10 +162,8 @@ export default function Suppliers() {
                   <td className="truncate" title={s.name}>{s.name}</td>
                   <td className="truncate" title={s.contactPerson}>{s.contactPerson || '-'}</td>
                   <td>{s.phone}</td>
-                  <td>
-                    <span className={s.balance > 0 ? 'badge badge-warning' : 'badge badge-ok'}>
-                      Rs {s.balance}
-                    </span>
+                  <td style={{ textAlign: 'right', ...balanceStyle(s.balance) }}>
+                    {formatCurrency(s.balance)}
                   </td>
                   <td className="table-actions">
                     <button className="btn-link" onClick={() => handleWhatsAppOrder(s)} style={{ color: '#22c55e', fontWeight: 600 }}>

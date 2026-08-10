@@ -157,7 +157,7 @@ export default function DashboardHome() {
       label: 'Low Stock Items',
       value: summary?.lowStockItems ?? 0,
       warning: (summary?.lowStockItems ?? 0) > 0 ? 'Need attention' : 'All good',
-      to: '/dashboard/inventory',
+      to: '/dashboard/low-stock',
     },
     {
       key: 'customers',

@@ -6,6 +6,7 @@ const validate = require('../middleware/validate');
 const {
   getProducts,
   getExpiryAlerts,
+  getLowStockAlerts,
   getProductByBarcode,
   getProduct,
   createProduct,
@@ -34,6 +35,7 @@ router
 // Must come before /:id, or Express would treat "expiry-alerts"/"bulk-import"
 // as an id param.
 router.get('/expiry-alerts', getExpiryAlerts);
+router.get('/low-stock', getLowStockAlerts);
 router.post('/bulk-import', requirePermission(PERMISSIONS.PRODUCT_MANAGE), bulkImportProducts);
 router.get('/barcode/:barcode', getProductByBarcode);
 

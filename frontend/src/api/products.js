@@ -10,5 +10,6 @@ export const adjustStock = (id, quantityChange, reason) =>
 export const getProductByBarcode = (barcode) =>
   apiClient.get(`/products/barcode/${barcode}`).then((r) => r.data);
 export const getExpiryAlerts = () => apiClient.get('/products/expiry-alerts').then((r) => r.data);
+export const getLowStockAlerts = () => apiClient.get('/products/low-stock').then((r) => r.data);
 export const bulkImportProducts = (products) =>
   apiClient.post('/products/bulk-import', { products }).then((r) => r.data);

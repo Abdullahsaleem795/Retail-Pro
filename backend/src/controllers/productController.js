@@ -103,6 +103,23 @@ const getExpiryAlerts = asyncHandler(async (req, res) => {
   res.json({ success: true, count: rows.length, data: mapRows(rows) });
 });
 
+// GET /api/products/low-stock
+// Live-computed, not a stored list - any sale, purchase, or manual stock
+// adjustment that crosses a product's threshold makes it appear/disappear
+// here immediately, same as the Inventory badge. Ordered by how far below
+// threshold each product is (most urgent - closest to/below zero - first).
+const getLowStockAlerts = asyncHandler(async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, name, sku, barcode, unit, stock_quantity, low_stock_threshold
+     FROM products
+     WHERE shop_id = $1 AND is_active = true
+       AND stock_quantity <= low_stock_threshold
+     ORDER BY (low_stock_threshold - stock_quantity) DESC`,
+    [req.shopId]
+  );
+  res.json({ success: true, count: rows.length, data: mapRows(rows) });
+});
+
 const getProductByBarcode = asyncHandler(async (req, res) => {
   const { rows } = await query('SELECT * FROM products WHERE shop_id = $1 AND barcode = $2', [
     req.shopId,
@@ -373,6 +390,7 @@ const adjustStock = asyncHandler(async (req, res) => {
 module.exports = {
   getProducts,
   getExpiryAlerts,
+  getLowStockAlerts,
   getProductByBarcode,
   getProduct,
   createProduct,

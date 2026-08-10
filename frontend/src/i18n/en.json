@@ -4,6 +4,7 @@
     "pos": "POS",
     "inventory": "Inventory",
     "expiryAlerts": "Expiry Alerts",
+    "lowStock": "Low Stock",
     "sales": "Sales",
     "purchases": "Purchases",
     "suppliers": "Suppliers",

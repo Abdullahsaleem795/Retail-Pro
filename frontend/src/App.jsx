@@ -15,6 +15,7 @@ const DashboardHome = lazy(() => import('./pages/dashboard/DashboardHome'));
 const POS = lazy(() => import('./pages/dashboard/POS'));
 const Inventory = lazy(() => import('./pages/dashboard/Inventory'));
 const ExpiryAlerts = lazy(() => import('./pages/dashboard/ExpiryAlerts'));
+const LowStockAlerts = lazy(() => import('./pages/dashboard/LowStockAlerts'));
 const Sales = lazy(() => import('./pages/dashboard/Sales'));
 const Purchases = lazy(() => import('./pages/dashboard/Purchases'));
 const Reports = lazy(() => import('./pages/dashboard/Reports'));
@@ -59,6 +60,7 @@ function App() {
               <Route path="pos" element={<POS />} />
               <Route path="inventory" element={<Inventory />} />
               <Route path="expiry-alerts" element={<ExpiryAlerts />} />
+              <Route path="low-stock" element={<LowStockAlerts />} />
               <Route path="sales" element={<Sales />} />
               <Route path="purchases" element={<Purchases />} />
               <Route path="reports" element={<Reports />} />

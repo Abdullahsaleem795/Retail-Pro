@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   FiMenu, FiHome, FiShoppingCart, FiBox, FiAlertTriangle, FiTag, FiTrendingUp, FiTruck,
   FiUsers, FiUser, FiDollarSign, FiBarChart2, FiGitBranch, FiUserCheck, FiSettings,
-  FiSearch, FiChevronDown, FiLogOut, FiPackage, FiCreditCard,
+  FiSearch, FiChevronDown, FiLogOut, FiPackage, FiCreditCard, FiTrendingDown,
 } from 'react-icons/fi';
 import { useAuth } from '../context/useAuth';
 import { listProducts } from '../api/products';
@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { to: '/dashboard', key: 'dashboard', end: true, permission: null, icon: FiHome, prefetch: () => import('../pages/dashboard/DashboardHome'), api: '/api/reports/dashboard-overview' },
   { to: '/dashboard/pos', key: 'pos', permission: null, icon: FiShoppingCart, prefetch: () => import('../pages/dashboard/POS'), api: '/api/products?limit=50' },
   { to: '/dashboard/inventory', key: 'inventory', permission: null, icon: FiBox, prefetch: () => import('../pages/dashboard/Inventory'), api: '/api/products?limit=50' },
+  { to: '/dashboard/low-stock', key: 'lowStock', permission: null, icon: FiTrendingDown, prefetch: () => import('../pages/dashboard/LowStockAlerts'), api: '/api/products/low-stock' },
   { to: '/dashboard/expiry-alerts', key: 'expiryAlerts', permission: null, icon: FiAlertTriangle, prefetch: () => import('../pages/dashboard/ExpiryAlerts'), api: '/api/products/expiry-alerts' },
   { to: '/dashboard/categories', key: 'categories', permission: null, icon: FiTag, prefetch: () => import('../pages/dashboard/Categories'), api: '/api/categories' },
   { to: '/dashboard/sales', key: 'sales', permission: null, icon: FiTrendingUp, prefetch: () => import('../pages/dashboard/Sales'), api: '/api/sales?limit=50' },

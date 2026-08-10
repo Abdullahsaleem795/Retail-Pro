@@ -591,6 +591,12 @@
   grid-template-columns: repeat(3, 1fr);
 }
 
+.ac-payment-hint {
+  font-size: var(--fs-small);
+  color: var(--ac-text-muted);
+  margin: var(--space-3) 0 0;
+}
+
 .ac-payment-row label {
   display: flex;
   flex-direction: column;

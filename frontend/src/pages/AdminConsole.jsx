@@ -260,6 +260,25 @@ function PaymentAccountsCard({ adminKey }) {
         </div>
 
         <div className="ac-payment-group">
+          <span className="ac-payment-group-label">Notifications</span>
+          <div className="ac-payment-row">
+            <label>
+              Admin notification email
+              <input
+                className="ac-input"
+                type="email"
+                value={form.notifyEmail || ''}
+                onChange={set('notifyEmail')}
+                placeholder="you@example.com"
+              />
+            </label>
+          </div>
+          <p className="ac-payment-hint">
+            Sent an email here every time a shop submits a Pro/Enterprise upgrade request, naming who purchased it.
+          </p>
+        </div>
+
+        <div className="ac-payment-group">
           <span className="ac-payment-group-label">Bank Transfer</span>
           <div className="ac-payment-row ac-payment-row-3">
             <label>

@@ -131,6 +131,7 @@ const updatePaymentAccounts = asyncHandler(async (req, res) => {
     jazzcashTitle, jazzcashNumber,
     easypaisaTitle, easypaisaNumber,
     bankTitle, bankName, bankIban,
+    notifyEmail,
   } = req.body;
 
   const { rows } = await query(
@@ -138,6 +139,7 @@ const updatePaymentAccounts = asyncHandler(async (req, res) => {
        jazzcash_title = $1, jazzcash_number = $2,
        easypaisa_title = $3, easypaisa_number = $4,
        bank_title = $5, bank_name = $6, bank_iban = $7,
+       notify_email = $8,
        updated_at = now()
      WHERE id = 1
      RETURNING *`,
@@ -145,6 +147,7 @@ const updatePaymentAccounts = asyncHandler(async (req, res) => {
       jazzcashTitle || null, jazzcashNumber || null,
       easypaisaTitle || null, easypaisaNumber || null,
       bankTitle || null, bankName || null, bankIban || null,
+      notifyEmail || null,
     ]
   );
 

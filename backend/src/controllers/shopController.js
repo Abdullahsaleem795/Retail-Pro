@@ -9,6 +9,7 @@ const {
 } = require('../config/permissions');
 const { getProvider } = require('../services/paymentProviders');
 const { buildWhatsAppUrl } = require('../services/whatsappService');
+const { sendUpgradePurchaseNotification } = require('../services/emailService');
 
 const getGrantablePermissions = asyncHandler(async (req, res) => {
   res.json({
@@ -210,6 +211,20 @@ const requestSubscriptionUpgrade = asyncHandler(async (req, res) => {
   // regex) so ADMIN_WHATSAPP typed in the natural local format
   // ("03056779779", not "923056779779") still produces a working wa.me link.
   const whatsappUrl = buildWhatsAppUrl(process.env.ADMIN_WHATSAPP || '923056779779', whatsappMsg);
+
+  // Best-effort - the admin's notify email is a self-service setting (see
+  // /api/admin/payment-accounts), so it may be unset. Never let a missing or
+  // broken SMTP config fail the shop's own upgrade request.
+  const { rows: paymentAccountRows } = await query('SELECT notify_email FROM platform_payment_accounts WHERE id = 1');
+  const notifyEmail = paymentAccountRows[0]?.notify_email;
+  await sendUpgradePurchaseNotification({
+    to: notifyEmail,
+    shopName: shop.name,
+    ownerName: shop.ownerName,
+    plan: planRequested,
+    paymentChannel,
+    transactionId,
+  });
 
   res.json({
     success: true,

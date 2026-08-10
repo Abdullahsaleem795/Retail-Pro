@@ -956,9 +956,15 @@ frontend/src/
       rebuilding `retailpro_test` from the updated file (Jest's `globalSetup.js` does this before every
       run) and confirming 48/48 tests still pass — a DDL syntax error would have failed the whole suite
       immediately, so this is real proof the fix is valid, not just "looks right."
-- [ ] **Set `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASS`/`EMAIL_FROM` as Vercel env vars on the
-      backend deployment** — configured and verified working in local `backend/.env` only (2026-08-10);
-      the admin-upgrade-notification email will silently no-op on production until these are set there too
+- [x] ~~Set `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASS`/`EMAIL_FROM` as Vercel env vars on the
+      backend deployment~~ — **done 2026-08-10**. First redeploy attempt still logged `[email] SMTP not
+      configured` in production (the vars hadn't actually been set yet, despite the user believing they
+      were — checked live Vercel runtime logs directly rather than trusting the claim, which is what
+      caught it). User added all 5 via Vercel's bulk `.env`-paste field, redeployed, and a second live
+      test against the production URL (`https://retail-pro-backend.vercel.app`) showed no
+      not-configured/failure log line and the user confirmed a real email landed in their Gmail inbox
+      titled "Pro plan purchased by Abdullah Saleem" — fully verified working on production, not just
+      locally.
 - [ ] Integrate a real payment gateway (JazzCash/EasyPaisa Merchant API webhook, or an aggregator like
       Safepay/PayFast) if genuinely automatic payment verification is ever wanted — the one-click
       "Confirm & Activate" link (2026-08-10) only speeds up the *admin's* manual verification step, it

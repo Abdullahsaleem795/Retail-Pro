@@ -62,10 +62,19 @@ export default function NotificationBell() {
       setLoading(true);
       await fetchNotifications();
       setLoading(false);
-      // Opening the panel counts as having seen them - clear the badge like
-      // any other notification bell, instead of leaving it stuck until each
-      // item is clicked individually.
-      handleMarkAll();
+      // Opening the panel counts as having seen them - clear the badge the
+      // moment they're visibly on screen, instead of waiting on a
+      // round-trip to the server. Applied after the fetch above (which
+      // would otherwise overwrite it with the still-unread count from
+      // before this "read" state has actually landed server-side).
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      setUnreadCount(0);
+      // Persisting is a background sync concern from here - whether it
+      // succeeds or hits a transient network hiccup, the shopkeeper never
+      // asked to "mark all as read", they just opened the bell, so a
+      // failure here shouldn't surface as an error about an action they
+      // didn't take.
+      handleMarkAll({ silent: true });
     }
   };
 
@@ -94,13 +103,16 @@ export default function NotificationBell() {
     }
   };
 
-  const handleMarkAll = async () => {
+  const handleMarkAll = async ({ silent = false } = {}) => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setUnreadCount(0);
     try {
       await markAllNotificationsRead();
-      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      setUnreadCount(0);
     } catch {
-      toast.error('Could not mark all as read');
+      // Silent path (auto-triggered by opening the bell): the shopkeeper
+      // never asked for this write, so a transient failure shouldn't
+      // interrupt them - the next open/poll will just try again.
+      if (!silent) toast.error('Could not mark all as read');
     }
   };
 

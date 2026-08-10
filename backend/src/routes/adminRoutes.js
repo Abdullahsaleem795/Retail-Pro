@@ -5,6 +5,7 @@ const {
   activateSubscription,
   confirmActivationToken,
   rejectSubscription,
+  expireTrial,
   getPaymentAccounts,
   updatePaymentAccounts,
   listBankAccounts,
@@ -19,6 +20,9 @@ router.use(requirePlatformAdmin);
 router.get('/shops', listShops);
 router.post('/shops/:shopId/subscription/activate', activateSubscription);
 router.post('/shops/:shopId/subscription/reject', rejectSubscription);
+// Manual trial-expiry trigger - see expireTrial in adminController.js for why
+// this exists (there's no automatic trial-length timer today).
+router.post('/shops/:shopId/subscription/expire-trial', expireTrial);
 // One-click "Confirm & Activate" link from the upgrade-request email/WhatsApp
 // ping - still behind requirePlatformAdmin above, same as every other route.
 router.post('/subscription/confirm-token', confirmActivationToken);

@@ -163,6 +163,7 @@ function ShopRow({ shop, adminKey, onChanged }) {
   const [complimentary, setComplimentary] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmingExpire, setConfirmingExpire] = useState(false);
 
   const isFreeGrant = (shop.lastPaymentTrx || '').startsWith('Free grant');
 
@@ -199,6 +200,31 @@ function ShopRow({ shop, adminKey, onChanged }) {
       toast.error(err.response?.data?.message || 'Reject failed');
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Two-click confirm instead of a native window.confirm() - this immediately
+  // locks the shop owner out of the app (see TrialExpiredOverlay), so an
+  // accidental single click shouldn't be able to trigger it.
+  const expireTrial = async () => {
+    if (!confirmingExpire) {
+      setConfirmingExpire(true);
+      return;
+    }
+    setBusy(true);
+    try {
+      await adminClient.post(
+        `/admin/shops/${shop._id}/subscription/expire-trial`,
+        {},
+        { headers: { 'x-admin-key': adminKey } }
+      );
+      toast.success(`${shop.name}'s trial marked as expired`);
+      onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not expire trial');
+    } finally {
+      setBusy(false);
+      setConfirmingExpire(false);
     }
   };
 
@@ -275,6 +301,23 @@ function ShopRow({ shop, adminKey, onChanged }) {
               Reject
             </button>
           </div>
+
+          {shop.subscriptionStatus === 'active' && (
+            <div className="ac-expire-row">
+              <button
+                className={`ac-btn ac-btn-sm ${confirmingExpire ? 'ac-btn-danger' : 'ac-btn-ghost'}`}
+                onClick={expireTrial}
+                disabled={busy}
+              >
+                {confirmingExpire ? 'Click again to confirm' : 'Expire Trial'}
+              </button>
+              {confirmingExpire && (
+                <button className="ac-btn ac-btn-ghost ac-btn-sm" onClick={() => setConfirmingExpire(false)} disabled={busy}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </td>
     </tr>

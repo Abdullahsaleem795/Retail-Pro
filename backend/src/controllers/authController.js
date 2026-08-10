@@ -48,7 +48,11 @@ const registerShopOwner = asyncHandler(async (req, res) => {
     accessToken,
     refreshToken,
     user: { id: user._id, name: user.name, email: user.email, role: user.role },
-    shop: { id: shop._id, name: shop.name, businessType: shop.businessType },
+    shop: {
+      id: shop._id, name: shop.name, businessType: shop.businessType,
+      subscriptionPlan: shop.subscriptionPlan, subscriptionStatus: shop.subscriptionStatus,
+      subscriptionEndsAt: shop.subscriptionEndsAt,
+    },
   });
 });
 
@@ -58,7 +62,8 @@ const login = asyncHandler(async (req, res) => {
 
   const { rows } = await query(
     `SELECT u.*, s.id AS shop_pk, s.name AS shop_name, s.business_type AS shop_business_type,
-            s.is_active AS shop_is_active
+            s.is_active AS shop_is_active, s.subscription_plan AS shop_subscription_plan,
+            s.subscription_status AS shop_subscription_status, s.subscription_ends_at AS shop_subscription_ends_at
      FROM users u JOIN shops s ON s.id = u.shop_id
      WHERE u.email = $1`,
     [email]
@@ -89,7 +94,11 @@ const login = asyncHandler(async (req, res) => {
       id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role,
       hasPin: Boolean(row.pin),
     },
-    shop: { id: row.shop_pk, name: row.shop_name, businessType: row.shop_business_type },
+    shop: {
+      id: row.shop_pk, name: row.shop_name, businessType: row.shop_business_type,
+      subscriptionPlan: row.shop_subscription_plan, subscriptionStatus: row.shop_subscription_status,
+      subscriptionEndsAt: row.shop_subscription_ends_at,
+    },
     permissions: getEffectivePermissions(user),
   });
 });
@@ -117,7 +126,8 @@ const pinLogin = asyncHandler(async (req, res) => {
 
   const { rows } = await query(
     `SELECT u.*, s.id AS shop_pk, s.name AS shop_name, s.business_type AS shop_business_type,
-            s.is_active AS shop_is_active
+            s.is_active AS shop_is_active, s.subscription_plan AS shop_subscription_plan,
+            s.subscription_status AS shop_subscription_status, s.subscription_ends_at AS shop_subscription_ends_at
      FROM users u JOIN shops s ON s.id = u.shop_id
      WHERE u.id = $1`,
     [userId]
@@ -180,7 +190,11 @@ const pinLogin = asyncHandler(async (req, res) => {
       id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role,
       hasPin: true,
     },
-    shop: { id: row.shop_pk, name: row.shop_name, businessType: row.shop_business_type },
+    shop: {
+      id: row.shop_pk, name: row.shop_name, businessType: row.shop_business_type,
+      subscriptionPlan: row.shop_subscription_plan, subscriptionStatus: row.shop_subscription_status,
+      subscriptionEndsAt: row.shop_subscription_ends_at,
+    },
     permissions: getEffectivePermissions(user),
   });
 });
@@ -216,10 +230,30 @@ const refresh = asyncHandler(async (req, res) => {
 
 // @route GET /api/auth/me
 // Returns the shop too - otherwise a page refresh loses the shop name, since
-// the client only receives it in the login response.
+// the client only receives it in the login response. Also carries
+// subscription status/plan - DashboardLayout polls this to know whether to
+// show the hard-lockout screen (see TrialExpiredOverlay), since that's the
+// one thing that can change under a user without them doing anything (an
+// admin manually expiring their trial from another session entirely).
 const getMe = asyncHandler(async (req, res) => {
-  const { rows } = await query('SELECT id, name, business_type FROM shops WHERE id = $1', [req.shopId]);
-  const shop = mapRow(rows[0]);
+  const { rows } = await query(
+    'SELECT id, name, business_type, subscription_plan, subscription_status, subscription_ends_at FROM shops WHERE id = $1',
+    [req.shopId]
+  );
+
+  // Same lazy expiry-flip as shopController.getShop - keeps this endpoint
+  // (polled far more often, since every page load hits /auth/me) truthful
+  // about status without a background job.
+  let shopRow = rows[0];
+  if (shopRow && shopRow.subscription_status === 'active' && shopRow.subscription_ends_at && new Date(shopRow.subscription_ends_at) < new Date()) {
+    const { rows: updated } = await query(
+      `UPDATE shops SET subscription_status = 'expired' WHERE id = $1
+       RETURNING id, name, business_type, subscription_plan, subscription_status, subscription_ends_at`,
+      [req.shopId]
+    );
+    shopRow = updated[0];
+  }
+  const shop = mapRow(shopRow);
 
   res.json({
     success: true,
@@ -231,7 +265,16 @@ const getMe = asyncHandler(async (req, res) => {
       role: req.user.role,
       hasPin: req.user.hasPin,
     },
-    shop: shop ? { id: shop._id, name: shop.name, businessType: shop.businessType } : null,
+    shop: shop
+      ? {
+          id: shop._id,
+          name: shop.name,
+          businessType: shop.businessType,
+          subscriptionPlan: shop.subscriptionPlan,
+          subscriptionStatus: shop.subscriptionStatus,
+          subscriptionEndsAt: shop.subscriptionEndsAt,
+        }
+      : null,
     shopId: req.shopId,
     role: req.role,
     permissions: req.permissions,

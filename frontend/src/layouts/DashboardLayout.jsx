@@ -10,8 +10,15 @@ import { useAuth } from '../context/useAuth';
 import { listProducts } from '../api/products';
 import LanguageSwitch from '../components/LanguageSwitch';
 import NotificationBell from '../components/NotificationBell';
+import TrialExpiredOverlay from '../components/TrialExpiredOverlay';
 import { formatCurrency, capitalize } from '../utils/format';
 import './DashboardLayout.css';
+
+// How often to re-check subscription status while the dashboard is already
+// open. There's no automatic trial-length timer - an admin can expire a
+// shop's trial at any moment from a totally separate session - so this is
+// what catches that without requiring the shopkeeper to log out and back in.
+const SUBSCRIPTION_POLL_MS = 45000;
 
 // `permission: null` means everyone signed in can see it. Anything else is
 // hidden unless the user's effective permissions include it, so a cashier
@@ -158,10 +165,25 @@ function UserMenu() {
 }
 
 export default function DashboardLayout() {
-  const { shop, user, can } = useAuth();
+  const { shop, user, can, refreshUser } = useAuth();
   const { t } = useTranslation();
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Polls /auth/me so a trial expired from the Admin Console (a completely
+  // separate session) is caught while this dashboard is already open, not
+  // just on next login. Errors are swallowed - a failed poll shouldn't log
+  // someone out or interrupt whatever they're doing.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshUser().catch(() => {});
+    }, SUBSCRIPTION_POLL_MS);
+    return () => clearInterval(interval);
+  }, [refreshUser]);
+
+  // The Upgrade page itself must stay usable even when locked out - it's the
+  // only way out besides logging out entirely.
+  const isTrialExpired = shop?.subscriptionStatus === 'expired' && location.pathname !== '/dashboard/upgrade';
 
   useEffect(() => {
     const activeItem = NAV_ITEMS.find((item) =>
@@ -200,6 +222,7 @@ export default function DashboardLayout() {
 
   return (
     <div className={`dash-shell${collapsed ? ' dash-shell-collapsed' : ''}`}>
+      {isTrialExpired && <TrialExpiredOverlay />}
       <aside className="dash-sidebar">
         <div className="dash-brand">
           <span className="dash-brand-icon"><FiShoppingCart size={18} /></span>

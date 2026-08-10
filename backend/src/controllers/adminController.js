@@ -165,6 +165,37 @@ const rejectSubscription = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Subscription request rejected', data: mapRow(rows[0]) });
 });
 
+// POST /api/admin/shops/:shopId/subscription/expire-trial
+// Manual, operator-triggered - there's no automatic trial-length timer today
+// (a new shop's subscription_ends_at is left NULL, see the schema default),
+// so this is the actual enforcement mechanism: the admin decides when a
+// shop's free access ends, not a clock. Deliberately gives no advance warning
+// to the shop - the owner only finds out via the hard-lockout screen the next
+// time anyone at that shop loads the dashboard (see DashboardLayout.jsx).
+const expireTrial = asyncHandler(async (req, res) => {
+  const { shopId } = req.params;
+
+  const { rows } = await query(
+    `UPDATE shops SET subscription_status = 'expired', subscription_ends_at = NOW() WHERE id = $1 RETURNING *`,
+    [shopId]
+  );
+
+  if (rows.length === 0) {
+    res.status(404);
+    throw new Error('Shop not found');
+  }
+
+  const shop = mapRow(rows[0]);
+
+  await query(
+    `INSERT INTO notifications (shop_id, type, title, message, channel, delivery_status)
+     VALUES ($1, 'subscription', 'Free Trial Ended', $2, 'in_app', 'sent')`,
+    [shopId, 'Your free trial has ended. Kindly upgrade your plan to continue.']
+  );
+
+  res.json({ success: true, message: `${shop.name}'s trial marked as expired`, data: shop });
+});
+
 // GET /api/admin/payment-accounts
 const getPaymentAccounts = asyncHandler(async (req, res) => {
   const { rows } = await query('SELECT * FROM platform_payment_accounts WHERE id = 1');
@@ -292,6 +323,7 @@ module.exports = {
   activateSubscription,
   confirmActivationToken,
   rejectSubscription,
+  expireTrial,
   getPaymentAccounts,
   updatePaymentAccounts,
   listBankAccounts,

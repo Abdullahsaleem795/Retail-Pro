@@ -9,6 +9,7 @@ const emptyForm = {
   sku: '',
   barcode: '',
   categoryId: '',
+  supplierId: '',
   unit: 'pcs',
   costPrice: '',
   sellingPrice: '',
@@ -18,7 +19,7 @@ const emptyForm = {
   expiryAlertDays: '',
 };
 
-export default function ProductFormModal({ product, categories, onCreateCategory, onSave, onClose }) {
+export default function ProductFormModal({ product, categories, suppliers, onCreateCategory, onSave, onClose }) {
   const [form, setForm] = useState(
     product
       ? {
@@ -26,6 +27,7 @@ export default function ProductFormModal({ product, categories, onCreateCategory
           sku: product.sku,
           barcode: product.barcode || '',
           categoryId: product.categoryId?._id || product.categoryId || '',
+          supplierId: product.supplierId?._id || product.supplierId || '',
           unit: product.unit,
           costPrice: product.costPrice,
           sellingPrice: product.sellingPrice,
@@ -62,6 +64,7 @@ export default function ProductFormModal({ product, categories, onCreateCategory
         stockQuantity: Number(form.stockQuantity),
         lowStockThreshold: Number(form.lowStockThreshold),
         categoryId: form.categoryId || undefined,
+        supplierId: form.supplierId || undefined,
         barcode: form.barcode || undefined,
         expiryDate: form.expiryDate || undefined,
         // '' means "leave whatever was set before untouched"; an explicit 0
@@ -121,6 +124,23 @@ export default function ProductFormModal({ product, categories, onCreateCategory
                   </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-field">
+              <label>Supplier</label>
+              <select name="supplierId" value={form.supplierId} onChange={handleChange}>
+                <option value="">No supplier</option>
+                {(suppliers || []).map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <span style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '0.25rem', display: 'block' }}>
+                Who you'd restock this from — needed for the Suppliers page "Order" button to find it.
+              </span>
             </div>
           </div>
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { listProducts, createProduct, updateProduct, deleteProduct } from '../../api/products';
 import { listCategories, createCategory } from '../../api/categories';
+import { listSuppliers } from '../../api/suppliers';
 import ProductFormModal from '../../components/ProductFormModal';
 import ConfirmModal from '../../components/ConfirmModal';
 import BulkImportModal from '../../components/BulkImportModal';
@@ -10,6 +11,7 @@ import './Inventory.css';
 export default function Inventory() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -42,6 +44,7 @@ export default function Inventory() {
 
   useEffect(() => {
     fetchCategories();
+    listSuppliers().then((res) => setSuppliers(res.data)).catch(() => {});
   }, [fetchCategories]);
 
   const handleSave = async (payload) => {
@@ -169,6 +172,7 @@ export default function Inventory() {
         <ProductFormModal
           product={editingProduct}
           categories={categories}
+          suppliers={suppliers}
           onCreateCategory={handleCreateCategory}
           onSave={handleSave}
           onClose={() => {

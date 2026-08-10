@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
@@ -60,6 +61,97 @@ function KeyGate({ onUnlock }) {
             {checking ? 'Checking...' : 'Unlock console'}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// Decodes the token's payload for DISPLAY ONLY - this is not a security
+// check. The server independently re-verifies the HMAC signature before
+// writing anything (see backend confirmActivationToken); if this decode
+// were ever wrong or tampered with, the worst that happens is a misleading
+// preview, never an unauthorized activation.
+const decodeTokenForDisplay = (token) => {
+  try {
+    const [body] = token.split('.');
+    const json = atob(body.replace(/-/g, '+').replace(/_/g, '/'));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+};
+
+// Landing page for the "Confirm & Activate" link sent to the admin's email/
+// WhatsApp when a shop submits an upgrade request. Still gated by the same
+// KeyGate as the rest of the console - the link only pre-fills WHAT to
+// activate, it never bypasses the admin-key requirement.
+function ConfirmActivation() {
+  const { token } = useParams();
+  const [adminKey, setAdminKey] = useState(() => sessionStorage.getItem('retailpro_admin_key') || '');
+  const [status, setStatus] = useState('idle'); // idle | confirming | done | error
+  const [resultMessage, setResultMessage] = useState('');
+
+  if (!adminKey) {
+    return <KeyGate onUnlock={setAdminKey} />;
+  }
+
+  const payload = decodeTokenForDisplay(token);
+
+  const handleConfirm = async () => {
+    setStatus('confirming');
+    try {
+      const { data } = await adminClient.post(
+        '/admin/subscription/confirm-token',
+        { token },
+        { headers: { 'x-admin-key': adminKey } }
+      );
+      setResultMessage(data.message);
+      setStatus('done');
+    } catch (err) {
+      setResultMessage(err.response?.data?.message || 'Could not activate - the link may be invalid or expired.');
+      setStatus('error');
+    }
+  };
+
+  return (
+    <div className="admin-console">
+      <Toaster position="top-right" />
+      <div className="ac-gate">
+        <div className="ac-gate-card ac-confirm-card">
+          <div className="ac-gate-mark">RP</div>
+
+          {status === 'done' ? (
+            <>
+              <h1>Activated</h1>
+              <p>{resultMessage}</p>
+            </>
+          ) : (
+            <>
+              <h1>Confirm Activation</h1>
+              {payload ? (
+                <div className="ac-confirm-details">
+                  <div className="ac-confirm-row"><span>Shop</span><strong>{payload.shopName || payload.shopId}</strong></div>
+                  <div className="ac-confirm-row"><span>Plan</span><strong>{(payload.plan || '').toUpperCase()} — {payload.durationMonths} mo</strong></div>
+                  <div className="ac-confirm-row"><span>Payment</span><strong>{payload.paymentChannel}</strong></div>
+                  <div className="ac-confirm-row"><span>TRX ID</span><strong>{payload.transactionId}</strong></div>
+                </div>
+              ) : (
+                <p>This activation link looks malformed.</p>
+              )}
+              <p className="ac-confirm-note">Make sure this payment actually landed in your account before confirming.</p>
+              {status === 'error' && <p className="ac-confirm-error">{resultMessage}</p>}
+              <button
+                className="ac-btn ac-btn-primary ac-btn-block"
+                onClick={handleConfirm}
+                disabled={!payload || status === 'confirming'}
+              >
+                {status === 'confirming' ? 'Activating...' : 'Confirm & Activate'}
+              </button>
+            </>
+          )}
+
+          <Link to="/admin" className="ac-confirm-link">Go to full console</Link>
+        </div>
       </div>
     </div>
   );
@@ -436,6 +528,8 @@ function BankAccountsCard({ adminKey }) {
     </div>
   );
 }
+
+export { ConfirmActivation };
 
 export default function AdminConsole() {
   const [adminKey, setAdminKey] = useState(() => sessionStorage.getItem('retailpro_admin_key') || '');

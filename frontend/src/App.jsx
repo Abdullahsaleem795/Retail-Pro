@@ -28,6 +28,9 @@ const Staff = lazy(() => import('./pages/dashboard/Staff'));
 const Profile = lazy(() => import('./pages/dashboard/Profile'));
 const Branches = lazy(() => import('./pages/dashboard/Branches'));
 const AdminConsole = lazy(() => import('./pages/AdminConsole'));
+const AdminConfirmActivation = lazy(() =>
+  import('./pages/AdminConsole').then((m) => ({ default: m.ConfirmActivation }))
+);
 const NotFound = lazy(() => import('./pages/NotFound'));
 
 function App() {
@@ -46,6 +49,9 @@ function App() {
               the user enters, not a shop JWT), so it lives outside ProtectedRoute
               on purpose: it manages ALL shops, not one signed-in shop's data. */}
           <Route path="/admin" element={<AdminConsole />} />
+          {/* One-click "Confirm & Activate" link from the upgrade-request
+              email/WhatsApp ping - same admin-key gate as /admin above. */}
+          <Route path="/admin/confirm/:token" element={<AdminConfirmActivation />} />
 
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<DashboardLayout />}>

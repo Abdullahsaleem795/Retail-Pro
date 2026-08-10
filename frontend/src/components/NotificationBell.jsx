@@ -18,6 +18,7 @@ const TYPE_LABELS = {
   expiry: 'Expiry',
   payment_due: 'Payment Due',
   system: 'System',
+  subscription: 'Subscription',
 };
 
 export default function NotificationBell() {

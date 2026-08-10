@@ -5,8 +5,44 @@
 const asyncHandler = require('express-async-handler');
 const { query } = require('../config/db');
 const { mapRow, mapRows } = require('../utils/sqlMapper');
+const activationToken = require('../utils/activationToken');
 
 const PLAN_DURATIONS_MONTHS = { basic: 1, pro: 1, enterprise: 1 };
+
+// Shared by the manual Activate button (activateSubscription) and the
+// one-click email/WhatsApp link (confirmActivationToken) - same database
+// write and same in-app notification either way, so the two paths can never
+// drift into activating a shop differently depending on which route was used.
+const performActivation = async ({ shopId, plan, months, isComplimentary, trxNote }) => {
+  const { rows } = await query(
+    `UPDATE shops SET
+       subscription_plan = $1,
+       subscription_status = 'active',
+       subscription_ends_at = NOW() + ($2 || ' months')::interval,
+       last_payment_trx = CASE WHEN $4 THEN $5 ELSE last_payment_trx END
+     WHERE id = $3
+     RETURNING *`,
+    [plan, months, shopId, Boolean(trxNote), trxNote]
+  );
+
+  if (rows.length === 0) return null;
+
+  const shop = mapRow(rows[0]);
+  const planLabel = plan.charAt(0).toUpperCase() + plan.slice(1);
+  const endsAt = new Date(shop.subscriptionEndsAt).toLocaleDateString('en-PK');
+  // Distinct wording for a paid confirmation vs. a free grant the owner never
+  // requested a review for - "confirmed" would be misleading on a comp grant.
+  const notifMessage = isComplimentary
+    ? `You've been given free access to the ${planLabel} plan, active until ${endsAt}.`
+    : `Your payment has been confirmed! The ${planLabel} plan is now active until ${endsAt}.`;
+  await query(
+    `INSERT INTO notifications (shop_id, type, title, message, channel, delivery_status)
+     VALUES ($1, 'subscription', 'Subscription Confirmed', $2, 'in_app', 'sent')`,
+    [shopId, notifMessage]
+  );
+
+  return shop;
+};
 
 // GET /api/admin/shops?status=pending_activation
 const listShops = asyncHandler(async (req, res) => {
@@ -58,34 +94,49 @@ const activateSubscription = asyncHandler(async (req, res) => {
     ? `Free grant (no payment)${note ? ` - ${note}` : ''}`
     : null;
 
-  const { rows } = await query(
-    `UPDATE shops SET
-       subscription_plan = $1,
-       subscription_status = 'active',
-       subscription_ends_at = NOW() + ($2 || ' months')::interval,
-       last_payment_trx = CASE WHEN $4 THEN $5 ELSE last_payment_trx END
-     WHERE id = $3
-     RETURNING *`,
-    [plan, months, shopId, isComplimentary, trxNote]
-  );
-
-  if (rows.length === 0) {
+  const shop = await performActivation({ shopId, plan, months, isComplimentary, trxNote });
+  if (!shop) {
     res.status(404);
     throw new Error('Shop not found');
   }
 
-  const shop = mapRow(rows[0]);
-
-  const activationNote = isComplimentary ? ' (complimentary access)' : '';
-  await query(
-    `INSERT INTO notifications (shop_id, type, title, message, channel, delivery_status)
-     VALUES ($1, 'subscription', 'Subscription Activated', $2, 'in_app', 'sent')`,
-    [shopId, `Your ${plan} plan is now active until ${new Date(shop.subscriptionEndsAt).toLocaleDateString('en-PK')}${activationNote}.`]
-  );
-
   res.json({
     success: true,
     message: `Activated ${plan} for ${months} month(s)${isComplimentary ? ' (free grant)' : ''}`,
+    data: shop,
+  });
+});
+
+// POST /api/admin/subscription/confirm-token
+// The one-click "Confirm & Activate" link sent to the admin's email/WhatsApp
+// when a shop submits an upgrade request (see shopController.requestSubscriptionUpgrade).
+// Still gated by requirePlatformAdmin like every other route here - the token
+// only carries WHAT to activate, it is not itself a credential. Verifying the
+// signature server-side (rather than trusting whatever the frontend decoded
+// for display) means a tampered shopId/plan/duration can never slip through
+// even though this endpoint is one click away from writing to the database.
+const confirmActivationToken = asyncHandler(async (req, res) => {
+  const { token } = req.body;
+  const payload = activationToken.verify(token);
+
+  if (!payload) {
+    res.status(400);
+    throw new Error('This activation link is invalid or has expired. Ask the shop to resubmit their upgrade request.');
+  }
+
+  const { shopId, plan, durationMonths, paymentChannel, transactionId } = payload;
+  const months = Number(durationMonths) > 0 ? Number(durationMonths) : PLAN_DURATIONS_MONTHS[plan] || 1;
+  const trxNote = `${paymentChannel || 'Transfer'} TRX: ${transactionId || 'N/A'} (${plan}) - confirmed via one-click link`;
+
+  const shop = await performActivation({ shopId, plan, months, isComplimentary: false, trxNote });
+  if (!shop) {
+    res.status(404);
+    throw new Error('Shop not found - it may have been deleted since this link was sent.');
+  }
+
+  res.json({
+    success: true,
+    message: `Activated ${plan} for ${shop.name} (${months} month${months === 1 ? '' : 's'})`,
     data: shop,
   });
 });
@@ -239,6 +290,7 @@ const deleteBankAccount = asyncHandler(async (req, res) => {
 module.exports = {
   listShops,
   activateSubscription,
+  confirmActivationToken,
   rejectSubscription,
   getPaymentAccounts,
   updatePaymentAccounts,

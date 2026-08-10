@@ -3,6 +3,7 @@ const { requirePlatformAdmin } = require('../middleware/platformAdmin');
 const {
   listShops,
   activateSubscription,
+  confirmActivationToken,
   rejectSubscription,
   getPaymentAccounts,
   updatePaymentAccounts,
@@ -18,6 +19,9 @@ router.use(requirePlatformAdmin);
 router.get('/shops', listShops);
 router.post('/shops/:shopId/subscription/activate', activateSubscription);
 router.post('/shops/:shopId/subscription/reject', rejectSubscription);
+// One-click "Confirm & Activate" link from the upgrade-request email/WhatsApp
+// ping - still behind requirePlatformAdmin above, same as every other route.
+router.post('/subscription/confirm-token', confirmActivationToken);
 
 router.route('/payment-accounts').get(getPaymentAccounts).put(updatePaymentAccounts);
 

@@ -128,6 +128,65 @@
   margin-bottom: var(--space-5);
 }
 
+/* ---------- One-click activation confirmation ---------- */
+
+.ac-confirm-card {
+  max-width: 420px;
+}
+
+.ac-confirm-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--ac-bg);
+  border: 1px solid var(--ac-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+}
+
+.ac-confirm-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  font-size: var(--fs-body-sm);
+}
+
+.ac-confirm-row span {
+  color: var(--ac-text-muted);
+}
+
+.ac-confirm-row strong {
+  color: var(--ac-text-primary);
+  text-align: right;
+}
+
+.ac-confirm-note {
+  font-size: var(--fs-small);
+  color: var(--ac-text-muted);
+  margin: 0 0 var(--space-4) !important;
+}
+
+.ac-confirm-error {
+  font-size: var(--fs-body-sm);
+  color: #ef4444;
+  margin: 0 0 var(--space-4) !important;
+}
+
+.ac-confirm-link {
+  display: block;
+  text-align: center;
+  margin-top: var(--space-5);
+  font-size: var(--fs-small);
+  color: var(--ac-text-muted);
+  text-decoration: none;
+}
+
+.ac-confirm-link:hover {
+  color: var(--ac-brand);
+}
+
 /* ---------- Buttons ---------- */
 
 .ac-btn {

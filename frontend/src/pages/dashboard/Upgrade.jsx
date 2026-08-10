@@ -194,7 +194,11 @@ export default function Upgrade() {
     setSubmittingTrx(true);
     try {
       const res = await requestSubscriptionUpgrade({ planRequested, paymentChannel, transactionId: transactionId.trim() });
-      toast.success('Upgrade request submitted!');
+      // Sets the expectation that activation isn't instant - a human still
+      // verifies the payment first. The same message lands as a persistent
+      // in-app notification too (see requestSubscriptionUpgrade), so it's not
+      // lost the moment this toast fades.
+      toast.success("Payment submitted! You'll receive a confirmation notification here shortly.", { duration: 5000 });
       setWhatsappUrl(res.whatsappUrl || '');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to submit upgrade request');

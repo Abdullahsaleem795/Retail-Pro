@@ -10,6 +10,7 @@ const {
 const { getProvider } = require('../services/paymentProviders');
 const { buildWhatsAppUrl } = require('../services/whatsappService');
 const { sendUpgradePurchaseNotification } = require('../services/emailService');
+const activationToken = require('../utils/activationToken');
 
 const getGrantablePermissions = asyncHandler(async (req, res) => {
   res.json({
@@ -198,15 +199,39 @@ const requestSubscriptionUpgrade = asyncHandler(async (req, res) => {
   const { rows: shopRows } = await query('SELECT * FROM shops WHERE id = $1', [req.shopId]);
   const shop = mapRow(shopRows[0]);
 
-  // Insert notification for audit trail
-  const message = `Upgrade request submitted for ${planRequested || 'Pro Plan'} via ${paymentChannel || 'Transfer'}. TRX ID: ${transactionId || 'N/A'}`;
+  // Shown in the owner's own notification bell right after they submit - sets
+  // the expectation that this is a two-step flow (submitted now, activated
+  // once the admin verifies) rather than looking like nothing happened.
+  const planLabel = (planRequested || 'Pro').charAt(0).toUpperCase() + (planRequested || 'Pro').slice(1);
+  const message = `We've received your ${planLabel} plan request (${paymentChannel || 'Transfer'}, TRX: ${transactionId || 'N/A'}). You'll get a confirmation notification here as soon as it's verified and activated.`;
   await query(
     `INSERT INTO notifications (shop_id, type, title, message, channel, delivery_status)
-     VALUES ($1, 'subscription', 'Subscription Upgrade Submitted', $2, 'in_app', 'sent')`,
+     VALUES ($1, 'subscription', 'Upgrade Request Received', $2, 'in_app', 'sent')`,
     [req.shopId, message]
   );
 
-  const whatsappMsg = `Assalam-o-Alaikum,\n\nShop *${shop.name}* (ID: ${shop._id}) requested subscription upgrade:\n• Plan: *${planRequested || 'Pro'}*\n• Payment Mode: *${paymentChannel || 'JazzCash/EasyPaisa'}*\n• TRX ID: *${transactionId || 'N/A'}*\n\nPlease verify and activate subscription.`;
+  // Signed link that lets the admin activate this exact request in one click
+  // from the email/WhatsApp notification, instead of opening the console,
+  // finding the shop, and retyping the plan + duration by hand. The token is
+  // verified server-side before anything is written - see
+  // adminController.confirmActivationToken and utils/activationToken.js for
+  // why this doesn't reopen the self-activation hole that was patched before.
+  const normalizedPlan = ['basic', 'pro', 'enterprise'].includes(planRequested) ? planRequested : 'pro';
+  const token = activationToken.sign({
+    shopId: req.shopId,
+    shopName: shop.name, // display-only on the confirm page; activation itself is keyed off shopId
+    plan: normalizedPlan,
+    durationMonths: 1,
+    paymentChannel: paymentChannel || 'Transfer',
+    transactionId: transactionId || 'N/A',
+  });
+  // CLIENT_URL can be a comma-separated list (see app.js CORS handling) -
+  // the first entry is always the primary frontend origin the link should
+  // point at.
+  const frontendOrigin = (process.env.CLIENT_URL || 'http://localhost:5173').split(',')[0].trim();
+  const confirmUrl = `${frontendOrigin}/admin/confirm/${token}`;
+
+  const whatsappMsg = `Assalam-o-Alaikum,\n\nShop *${shop.name}* (ID: ${shop._id}) requested subscription upgrade:\n• Plan: *${planRequested || 'Pro'}*\n• Payment Mode: *${paymentChannel || 'JazzCash/EasyPaisa'}*\n• TRX ID: *${transactionId || 'N/A'}*\n\nPlease verify the payment, then tap to activate instantly:\n${confirmUrl}`;
   // Routed through the shared helper (not a second hand-rolled cleanPhone
   // regex) so ADMIN_WHATSAPP typed in the natural local format
   // ("03056779779", not "923056779779") still produces a working wa.me link.
@@ -224,6 +249,7 @@ const requestSubscriptionUpgrade = asyncHandler(async (req, res) => {
     plan: planRequested,
     paymentChannel,
     transactionId,
+    confirmUrl,
   });
 
   res.json({

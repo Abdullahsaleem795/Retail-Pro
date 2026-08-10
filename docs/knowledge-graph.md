@@ -581,7 +581,13 @@ mirrored into `schema.sql` (which had drifted from the live DB — see Decision 
 - **Numeric columns need the type-parser fix** in `config/db.js` (OID 1700 → float).
 - **`sqlMapper.js`'s regex excludes position 0** so a literal `'_id'` key inside `jsonb_build_object()`
   isn't mangled into `'Id'`.
-- **Demo login:** `demo@retailpro.pk` / `demo1234` (owner), `cashier@retailpro.pk` / `demo1234`.
+- **Demo login:** `demo@retailpro.pk` (owner) and `cashier@retailpro.pk` (cashier) - `demo1234` is the
+  password `backend/src/utils/seed.js` sets on a **freshly-seeded local database only**. On the LIVE
+  production Supabase DB, both passwords were rotated 2026-08-10 to random values NOT in this repo
+  (verified live: `demo1234` no longer authenticates against production) - this repo is public, and
+  `seed.js` publicly shows `demo1234` in plaintext, so leaving the live account on that literal value
+  would let anyone who reads the source log into the real deployed demo shop. Ask the user directly for
+  the current live password if you need it; don't assume `demo1234` still works there.
 - **Secrets** live in `backend/.env` (gitignored). Supabase DB password was pasted in chat during original
   setup — still worth rotating before this holds real shop data.
 - **Subscription activation is admin-gated, NOT self-service** (fixed 2026-08-03, see gap #2 above)

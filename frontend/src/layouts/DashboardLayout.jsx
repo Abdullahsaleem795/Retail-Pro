@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   FiMenu, FiHome, FiShoppingCart, FiBox, FiAlertTriangle, FiTag, FiTrendingUp, FiTruck,
   FiUsers, FiUser, FiDollarSign, FiBarChart2, FiGitBranch, FiUserCheck, FiSettings,
-  FiSearch, FiChevronDown, FiLogOut, FiPackage,
+  FiSearch, FiChevronDown, FiLogOut, FiPackage, FiCreditCard,
 } from 'react-icons/fi';
 import { useAuth } from '../context/useAuth';
 import { listProducts } from '../api/products';
@@ -30,6 +30,10 @@ const NAV_ITEMS = [
   { to: '/dashboard/reports', key: 'reports', permission: 'report:view', icon: FiBarChart2, prefetch: () => import('../pages/dashboard/Reports'), api: '/api/reports/dashboard-overview' },
   { to: '/dashboard/branches', key: 'branches', permission: 'branch:manage', icon: FiGitBranch, prefetch: () => import('../pages/dashboard/Branches'), api: '/api/branches' },
   { to: '/dashboard/staff', key: 'staff', permission: 'staff:manage', icon: FiUserCheck, prefetch: () => import('../pages/dashboard/Staff') },
+  // Same 'shop:settings' gate as before - that permission is owner-only (see
+  // backend/src/config/permissions.js), matching exactly who could actually
+  // submit an upgrade request when this lived inside Settings.
+  { to: '/dashboard/upgrade', key: 'upgrade', permission: 'shop:settings', icon: FiCreditCard, prefetch: () => import('../pages/dashboard/Upgrade') },
   { to: '/dashboard/settings', key: 'settings', permission: 'shop:settings', icon: FiSettings, prefetch: () => import('../pages/dashboard/Settings') },
 ];
 

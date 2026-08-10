@@ -154,10 +154,96 @@ const updatePaymentAccounts = asyncHandler(async (req, res) => {
   res.json({ success: true, message: 'Payment accounts updated', data: mapRow(rows[0]) });
 });
 
+// --- Bank accounts -------------------------------------------------------
+// A LIST, unlike the single bank fields still on platform_payment_accounts:
+// a shop owner picks which of the operator's banks to transfer into, so the
+// operator needs to advertise more than one. Read by every shop through
+// GET /api/shop/payment-accounts; only writable here.
+
+// GET /api/admin/bank-accounts
+const listBankAccounts = asyncHandler(async (req, res) => {
+  const { rows } = await query(
+    'SELECT * FROM platform_bank_accounts ORDER BY sort_order, created_at'
+  );
+  res.json({ success: true, count: rows.length, data: mapRows(rows) });
+});
+
+// Shared by create and update - a bank is only useful to pay into if the
+// owner can identify it AND has a number to send money to, so those are the
+// only hard requirements.
+const readBankBody = (req, res) => {
+  const bankName = (req.body.bankName || '').trim();
+  const accountTitle = (req.body.accountTitle || '').trim();
+  const iban = (req.body.iban || '').trim();
+  const accountNumber = (req.body.accountNumber || '').trim();
+
+  if (!bankName || !accountTitle) {
+    res.status(400);
+    throw new Error('bankName and accountTitle are required');
+  }
+  if (!iban && !accountNumber) {
+    res.status(400);
+    throw new Error('Provide an IBAN or an account number');
+  }
+
+  return { bankName, accountTitle, iban: iban || null, accountNumber: accountNumber || null };
+};
+
+// POST /api/admin/bank-accounts
+const createBankAccount = asyncHandler(async (req, res) => {
+  const { bankName, accountTitle, iban, accountNumber } = readBankBody(req, res);
+  const sortOrder = Number.isFinite(Number(req.body.sortOrder)) ? Number(req.body.sortOrder) : 0;
+
+  const { rows } = await query(
+    `INSERT INTO platform_bank_accounts (bank_name, account_title, iban, account_number, sort_order)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [bankName, accountTitle, iban, accountNumber, sortOrder]
+  );
+
+  res.status(201).json({ success: true, message: `${bankName} added`, data: mapRow(rows[0]) });
+});
+
+// PUT /api/admin/bank-accounts/:id
+const updateBankAccount = asyncHandler(async (req, res) => {
+  const { bankName, accountTitle, iban, accountNumber } = readBankBody(req, res);
+  const sortOrder = Number.isFinite(Number(req.body.sortOrder)) ? Number(req.body.sortOrder) : 0;
+
+  const { rows } = await query(
+    `UPDATE platform_bank_accounts SET
+       bank_name = $1, account_title = $2, iban = $3, account_number = $4,
+       sort_order = $5, updated_at = now()
+     WHERE id = $6
+     RETURNING *`,
+    [bankName, accountTitle, iban, accountNumber, sortOrder, req.params.id]
+  );
+
+  if (rows.length === 0) {
+    res.status(404);
+    throw new Error('Bank account not found');
+  }
+
+  res.json({ success: true, message: 'Bank account updated', data: mapRow(rows[0]) });
+});
+
+// DELETE /api/admin/bank-accounts/:id
+const deleteBankAccount = asyncHandler(async (req, res) => {
+  const { rowCount } = await query('DELETE FROM platform_bank_accounts WHERE id = $1', [req.params.id]);
+  if (rowCount === 0) {
+    res.status(404);
+    throw new Error('Bank account not found');
+  }
+  res.json({ success: true, message: 'Bank account removed' });
+});
+
 module.exports = {
   listShops,
   activateSubscription,
   rejectSubscription,
   getPaymentAccounts,
   updatePaymentAccounts,
+  listBankAccounts,
+  createBankAccount,
+  updateBankAccount,
+  deleteBankAccount,
 };

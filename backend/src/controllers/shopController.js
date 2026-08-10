@@ -241,7 +241,17 @@ const requestSubscriptionUpgrade = asyncHandler(async (req, res) => {
 // read but never write these.
 const getPaymentAccounts = asyncHandler(async (req, res) => {
   const { rows } = await query('SELECT * FROM platform_payment_accounts WHERE id = 1');
-  res.json({ success: true, data: rows.length ? mapRow(rows[0]) : null });
+
+  // `banks` is the list the owner actually chooses from on the upgrade screen.
+  // The legacy single bank_* fields are still returned above for now, but the
+  // UI reads this array - that's what makes "pick which bank to pay into"
+  // possible at all.
+  const { rows: bankRows } = await query(
+    'SELECT id, bank_name, account_title, iban, account_number FROM platform_bank_accounts ORDER BY sort_order, created_at'
+  );
+
+  const data = rows.length ? mapRow(rows[0]) : {};
+  res.json({ success: true, data: { ...data, banks: mapRows(bankRows) } });
 });
 
 // NOTE: subscription activation is intentionally NOT exposed here. It used to

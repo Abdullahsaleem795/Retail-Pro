@@ -129,37 +129,228 @@
 .payment-box {
   background: var(--color-bg-subtle);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
   margin-bottom: var(--space-5);
 }
 
-.payment-box p {
-  font-size: var(--fs-small);
-  color: var(--color-text-muted);
-  margin: 0 0 var(--space-3);
+.payment-box-head {
+  margin-bottom: var(--space-4);
 }
 
-.payment-grid {
+.payment-box-title {
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-primary);
+  margin: 0 0 var(--space-1);
+}
+
+.payment-box-sub,
+.payment-empty {
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* Equal-width tiles rather than auto-fit: a 3-column row of identically sized
+   cards is what makes this read as a deliberate list instead of ragged boxes. */
+.pay-methods {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: var(--space-3);
 }
 
-.payment-account {
+.pay-method {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--fs-small);
-  color: var(--color-text-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-.payment-account-title {
+.pay-method:hover {
+  border-color: var(--color-text-muted);
+  box-shadow: var(--shadow-sm);
+}
+
+.pay-method.is-selected {
+  border-color: var(--color-success);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+}
+
+/* The radio stays in the accessibility tree (keyboard + screen reader still
+   drive the group) but the card itself is the visible control. */
+.pay-method-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+
+.pay-method-input:focus-visible + .pay-mark {
+  outline: 2px solid var(--color-success);
+  outline-offset: 2px;
+}
+
+/* Base tile shared by both variants - PaymentMonogram sets width/height
+   inline per-instance, everything else (shape, clipping) lives here. */
+.pay-mark {
+  flex: 0 0 auto;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+
+/* Real brand mark (JazzCash/EasyPaisa/Meezan/HBL): the SVG already carries
+   its own background and colours, this tile is just a clipping frame with a
+   hairline border so it doesn't float free of the card. */
+.pay-mark-logo {
+  border: 1px solid var(--color-border);
+}
+
+/* Fallback for every bank without a hand-drawn mark: solid brand-ish colour
+   with the derived initials. */
+.pay-mark-letters {
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: var(--fw-bold, 700);
+  letter-spacing: 0.02em;
+}
+
+.pay-method-mark-sm.pay-mark-letters {
+  font-size: 0.625rem;
+}
+
+.pay-method-mark-sm.pay-mark-logo,
+.pay-method-mark-sm {
+  border-radius: 6px;
+}
+
+.pay-method-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.pay-group + .pay-group {
+  margin-top: var(--space-4);
+}
+
+.pay-group-label {
   display: block;
+  font-size: 0.6875rem;
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.pay-method-name {
+  font-size: var(--fs-body-sm);
   font-weight: var(--fw-semibold);
   color: var(--color-text-primary);
-  margin-bottom: var(--space-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pay-method-title {
+  font-size: var(--fs-small);
+  color: var(--color-text-muted);
+}
+
+.pay-method-number-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* Monospaced and allowed to WRAP, never ellipsised: a half-shown IBAN is
+   useless to someone typing it into their banking app, so the full value is
+   always on screen even if it costs a second line. */
+.pay-method-number {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--fs-small);
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  word-break: break-all;
+  min-width: 0;
+}
+
+.pay-copy {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-secondary);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.pay-copy:hover {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: #fff;
+}
+
+.pay-method-check {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border-strong);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.pay-method.is-selected .pay-method-check {
+  border-color: var(--color-success);
+  background: var(--color-success)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.5l3 3 6-6'/%3E%3C/svg%3E")
+    center / 12px no-repeat;
+}
+
+/* Read-only echo of the selected card, sitting in the submit form. */
+.paying-through {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--input-height, 42px);
+  padding: 0 var(--space-3);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--input-radius);
+}
+
+.paying-through-name {
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-medium);
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paying-through-empty {
+  font-size: var(--fs-body-sm);
+  color: var(--color-text-muted);
 }
 
 /* ---------- Language toggle (segmented control) ---------- */

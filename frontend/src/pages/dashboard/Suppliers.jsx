@@ -11,7 +11,10 @@ import './Inventory.css';
 // A filled badge/pill reads fine for a short status word, but for a currency
 // figure it looks like a sticker rather than a ledger value - plain weighted
 // text, colored only when there's actually something owed, reads calmer and
-// more like an accounting table.
+// more like an accounting table. Left-aligned (not right) to stay flush with
+// every other column in this table - right-aligning just this one column
+// against a much wider "Balance Owed" header left a wide gap after Phone and
+// bunched the figure up against Actions, breaking the row's reading line.
 const balanceStyle = (balance) => ({
   fontWeight: 600,
   color: balance > 0 ? '#b45309' : '#64748b',
@@ -147,7 +150,7 @@ export default function Suppliers() {
               <th>Name</th>
               <th>Contact Person</th>
               <th>Phone</th>
-              <th style={{ textAlign: 'right' }}>Balance Owed</th>
+              <th>Balance Owed</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -162,9 +165,7 @@ export default function Suppliers() {
                   <td className="truncate" title={s.name}>{s.name}</td>
                   <td className="truncate" title={s.contactPerson}>{s.contactPerson || '-'}</td>
                   <td>{s.phone}</td>
-                  <td style={{ textAlign: 'right', ...balanceStyle(s.balance) }}>
-                    {formatCurrency(s.balance)}
-                  </td>
+                  <td style={balanceStyle(s.balance)}>{formatCurrency(s.balance)}</td>
                   <td className="table-actions">
                     <button className="btn-link" onClick={() => handleWhatsAppOrder(s)} style={{ color: '#22c55e', fontWeight: 600 }}>
                       💬 Order

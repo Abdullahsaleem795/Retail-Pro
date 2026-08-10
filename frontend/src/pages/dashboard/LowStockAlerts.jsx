@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { getLowStockAlerts } from '../../api/products';
+import { describeLoadFailure } from '../../utils/errorMessage';
 
 const stockBadgeClass = (stockQuantity) => (stockQuantity <= 0 ? 'badge badge-danger' : 'badge badge-warning');
 
@@ -14,7 +15,11 @@ export default function LowStockAlerts() {
   useEffect(() => {
     getLowStockAlerts()
       .then((res) => setProducts(res.data))
-      .catch(() => toast.error('Failed to load low stock alerts'))
+      .catch((err) =>
+        toast.error(describeLoadFailure(err, "Couldn't load low stock alerts. Try refreshing the page."), {
+          id: 'low-stock-load-error',
+        })
+      )
       .finally(() => setLoading(false));
   }, []);
 

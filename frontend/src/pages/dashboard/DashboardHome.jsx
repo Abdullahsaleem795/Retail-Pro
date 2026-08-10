@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
@@ -7,37 +7,45 @@ import {
 } from 'recharts';
 import toast from 'react-hot-toast';
 import { FiTrendingUp, FiShoppingCart, FiDollarSign, FiAlertTriangle, FiUsers, FiPackage } from 'react-icons/fi';
-import { getDashboardOverview } from '../../api/reports';
+import { getDashboardOverview, getSalesTrend } from '../../api/reports';
 import { useAuth } from '../../context/useAuth';
 import { formatCurrency, formatDateTime, capitalize } from '../../utils/format';
+import { describeLoadFailure } from '../../utils/errorMessage';
 import SkeletonLoader from '../../components/SkeletonLoader';
 import TrendStatCard from '../../components/TrendStatCard';
 import './Inventory.css';
 import './DashboardHome.css';
 
-// Builds a chronological, zero-filled 14-day array from the trend rows the
+// Builds a chronological, zero-filled N-day array from the trend rows the
 // API returns (which only include days that actually had a sale) - the chart
 // needs a value for EVERY day, not just the ones with data, otherwise
 // Recharts' categorical x-axis spaces sparse real days evenly regardless of
 // the actual gap between them, drawing a misleading line across a quiet
 // stretch instead of showing it as quiet.
-const zeroFill14Days = (rawTrend) => {
+const zeroFillDays = (rawTrend, days) => {
   const byDate = new Map(rawTrend.map((d) => [d._id, d]));
-  const days = [];
-  for (let i = 13; i >= 0; i--) {
+  const result = [];
+  for (let i = days - 1; i >= 0; i--) {
     const dt = new Date();
     dt.setDate(dt.getDate() - i);
     const key = dt.toISOString().slice(0, 10);
     const match = byDate.get(key);
-    days.push({
+    result.push({
       _id: key,
       date: new Date(key).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' }),
       total: match?.total ?? 0,
       transactions: match?.transactions ?? 0,
     });
   }
-  return days;
+  return result;
 };
+
+// How many x-axis labels to skip between ticks, tuned to land on roughly 7-8
+// visible labels regardless of range - the same spacing a 14-day view always
+// had, just no longer hardcoded now the owner can pick a wider range.
+const trendXAxisInterval = (days) => Math.max(0, Math.floor(days / 7) - 1);
+
+const TREND_RANGE_OPTIONS = [7, 14, 30, 60, 90];
 
 // "32000" -> "32k" - matches the compact-number style real dashboards use on
 // a Y-axis; the exact figure is still available in the tooltip on hover.
@@ -69,10 +77,16 @@ export default function DashboardHome() {
   const [weekComparison, setWeekComparison] = useState(null);
   const [stockBreakdown, setStockBreakdown] = useState(null);
   const [trend, setTrend] = useState([]);
+  const [trendDays, setTrendDays] = useState(14);
+  const [trendLoading, setTrendLoading] = useState(false);
   const [hasSalesHistory, setHasSalesHistory] = useState(false);
   const [bestSellers, setBestSellers] = useState([]);
   const [recentSales, setRecentSales] = useState([]);
   const [loading, setLoading] = useState(true);
+  // The default (14-day) trend the initial combined call already fetched -
+  // kept around so switching back to 14 days restores it without a
+  // redundant round-trip for data we already have.
+  const defaultTrendRef = useRef([]);
 
   useEffect(() => {
     const load = async () => {
@@ -80,21 +94,55 @@ export default function DashboardHome() {
         const res = await getDashboardOverview();
         const { summary: s, trend: t, bestSellers: b, weekComparison: wk, stockBreakdown: sb, recentSales: rs } = res.data;
         const rawTrend = t || [];
+        defaultTrendRef.current = rawTrend;
         setSummary(s);
         setWeekComparison(wk);
         setStockBreakdown(sb);
-        setTrend(zeroFill14Days(rawTrend));
+        // The combined overview endpoint already returns a 14-day trend for
+        // free, so the default view loads with zero extra requests - only
+        // switching the range below triggers a dedicated fetch.
+        setTrend(zeroFillDays(rawTrend, 14));
         setHasSalesHistory(rawTrend.length > 0);
         setBestSellers(b || []);
         setRecentSales(rs || []);
-      } catch {
-        toast.error('Failed to load dashboard data');
+      } catch (err) {
+        // A stable id makes a second identical failure (e.g. React
+        // StrictMode's double effect-invocation in dev) replace the existing
+        // toast instead of stacking a duplicate on top of it.
+        toast.error(describeLoadFailure(err, "Couldn't load the dashboard. Try refreshing the page."), {
+          id: 'dashboard-load-error',
+        });
       } finally {
         setLoading(false);
       }
     };
     load();
   }, []);
+
+  const handleTrendDaysChange = async (days) => {
+    setTrendDays(days);
+    if (days === 14) {
+      // Falling back to the default range reuses what the initial combined
+      // call already fetched instead of round-tripping for it again.
+      const rawTrend = defaultTrendRef.current;
+      setTrend(zeroFillDays(rawTrend, 14));
+      setHasSalesHistory(rawTrend.length > 0);
+      return;
+    }
+    setTrendLoading(true);
+    try {
+      const res = await getSalesTrend(days);
+      const rawTrend = res.data || [];
+      setTrend(zeroFillDays(rawTrend, days));
+      setHasSalesHistory(rawTrend.length > 0);
+    } catch (err) {
+      toast.error(describeLoadFailure(err, "Couldn't load that range. Try again."), {
+        id: 'dashboard-load-error',
+      });
+    } finally {
+      setTrendLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -204,7 +252,17 @@ export default function DashboardHome() {
           <div className="chart-card">
             <div className="dash-panel-header">
               <h2 className="chart-title">Sales Overview</h2>
-              <span className="dash-panel-tag">Last 14 Days</span>
+              <select
+                className="dash-panel-tag dash-panel-select"
+                value={trendDays}
+                onChange={(e) => handleTrendDaysChange(Number(e.target.value))}
+                disabled={trendLoading}
+                aria-label="Sales overview date range"
+              >
+                {TREND_RANGE_OPTIONS.map((d) => (
+                  <option key={d} value={d}>Last {d} Days</option>
+                ))}
+              </select>
             </div>
             {!hasSalesHistory ? (
               <p className="empty-hint">No sales recorded yet.</p>
@@ -221,7 +279,7 @@ export default function DashboardHome() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#eef2f6" vertical={false} />
                     <XAxis
                       dataKey="date"
-                      interval={1}
+                      interval={trendXAxisInterval(trendDays)}
                       tick={{ fontSize: 12, fill: '#94a3b8' }}
                       axisLine={false}
                       tickLine={false}
@@ -245,7 +303,10 @@ export default function DashboardHome() {
                       stroke="#2563eb"
                       strokeWidth={2.5}
                       fill="url(#salesFill)"
-                      dot={{ r: 3, strokeWidth: 2, stroke: '#2563eb', fill: '#fff' }}
+                      // Per-point dots read fine up to ~30 days; past that
+                      // they'd overlap into a solid row of circles, so the
+                      // line speaks for itself and the hover dot still works.
+                      dot={trendDays > 30 ? false : { r: 3, strokeWidth: 2, stroke: '#2563eb', fill: '#fff' }}
                       activeDot={{ r: 5, strokeWidth: 2, stroke: '#fff' }}
                     />
                   </AreaChart>
